@@ -1,0 +1,10 @@
+<Project>
+  <!-- Loaded by MSBuild for every project under mods/. The shared source folders live here, in one place:
+       a csproj writes $(DigiCoreDir)*.cs instead of a relative path, so moving a mod folder never breaks a build. -->
+  <PropertyGroup>
+    <DigiCoreDir>$(MSBuildThisFileDirectory)core\DigiCore\</DigiCoreDir>
+    <DigiSharedDir>$(MSBuildThisFileDirectory)core\DigiShared\</DigiSharedDir>
+    <DigiStorageDir>$(MSBuildThisFileDirectory)core\DigiStorage\</DigiStorageDir>
+    <DigiCreativeDir>$(MSBuildThisFileDirectory)standalone\DigiCreative\</DigiCreativeDir>
+  </PropertyGroup>
+</Project>
