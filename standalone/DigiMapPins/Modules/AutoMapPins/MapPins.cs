@@ -85,6 +85,7 @@ namespace AutoMapPins
             record.OnMinimap = record.IsPortal ? Plugin.PortalsOnMinimap : Plugin.OnMinimap(thing);
             record.Level = record.IsPortal || thing != null ? Plugin.LevelFor(thing) : 2;
             record.Filter = MapView.FilterOf(record, thing);
+            record.NearOnly = !record.IsPortal && thing != null && Plugin.NearOnlyFor(thing);
         }
 
         // This mod's pins on the map (for pointing at them).

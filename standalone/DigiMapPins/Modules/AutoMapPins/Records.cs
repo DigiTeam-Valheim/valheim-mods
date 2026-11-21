@@ -34,6 +34,7 @@ namespace AutoMapPins
         public bool OnMinimap = true;
         public int Level;           // the large map's zoom step from which it shows (0 zoomed out, 1 halfway, 2 zoomed in)
         public int Filter;          // its filter button (MapView)
+        public bool NearOnly;       // its kind is set to "Nearby only": shown only within that radius of you
         // Merged on the large map: the pin it is shown as (hidden itself), or for the pin shown its count with the
         // merged ones and how many pins that is.
         public Record MergedInto;

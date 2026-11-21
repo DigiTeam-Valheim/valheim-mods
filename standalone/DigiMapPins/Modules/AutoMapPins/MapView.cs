@@ -99,7 +99,26 @@ namespace AutoMapPins
             }
         }
 
-        internal static bool Filtered(Record record) => (Plugin.HiddenKinds & (1 << record.Filter)) != 0;
+        // Hidden by its filter button, or too far from you for its kind's "Nearby only" (then also not merged or counted).
+        internal static bool Filtered(Record record) =>
+            (Plugin.HiddenKinds & (1 << record.Filter)) != 0 || record.NearOnly && Utils.DistanceXZ(record.Pos, _playerPos) > Plugin.NearRadius;
+
+        // "Nearby only" goes by where you were when the pins were last placed: once you moved a tenth of the radius (at
+        // least 10 m), the pins show again by distance. The game only places its pins when something changed, not as
+        // you walk, so this asks for it (a few times a minute while running, nothing while nothing is set to it).
+        private static Vector3 _playerPos;
+
+        internal static void FollowPlayer()
+        {
+            if (!Plugin.AnyNearOnly) return;
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+            var pos = player.transform.position;
+            if (Utils.DistanceXZ(pos, _playerPos) < Mathf.Max(10f, Plugin.NearRadius * 0.1f)) return;
+            _playerPos = pos;
+            Dirty = true;
+            MapPins.Redraw();
+        }
 
         // --- Merging ---------------------------------------------------------------------------------------------
 

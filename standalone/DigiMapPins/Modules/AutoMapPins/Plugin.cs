@@ -71,6 +71,10 @@ namespace AutoMapPins
         private static readonly ConfigEntry<ShowFrom>[] Levels = new ConfigEntry<ShowFrom>[GroupTitles.Length];
         private static ConfigEntry<bool> _portalMinimap, _crossOff, _preview;
         private static readonly ConfigEntry<float>[] Sizes = new ConfigEntry<float>[GroupTitles.Length];
+        // "Nearby only" for the kinds of things you gather or loot (places are landmarks you look for map-wide).
+        private static readonly Group[] NearGroups = { Group.Deposits, Group.Plants, Group.Chests, Group.Spawners, Group.Builds };
+        private static readonly ConfigEntry<bool>[] NearOnly = new ConfigEntry<bool>[GroupTitles.Length];
+        private static ConfigEntry<float> _nearRadius;
         private static ConfigEntry<string> _portalIcon;
         private static ConfigEntry<float> _radius, _size, _faded, _portalSize, _traderSize, _nameSize;
         private static ConfigEntry<IconStyle> _style;
@@ -129,6 +133,25 @@ namespace AutoMapPins
         // Whether pins of this kind of thing show on the minimap too (always on the large map).
         internal static bool OnMinimap(Thing thing) => thing == null || Minimaps[(int)GroupOf(thing)].Value;
         internal static bool PortalsOnMinimap => _portalMinimap.Value;
+
+        // Whether pins of this kind of thing show only near you, and how near.
+        internal static bool NearOnlyFor(Thing thing)
+        {
+            var entry = NearOnly[(int)GroupOf(thing)];
+            return entry != null && entry.Value;
+        }
+
+        internal static float NearRadius => _nearRadius.Value;
+
+        internal static bool AnyNearOnly
+        {
+            get
+            {
+                foreach (var group in NearGroups)
+                    if (NearOnly[(int)group].Value) return true;
+                return false;
+            }
+        }
         internal static bool CrossOffLooted => _crossOff.Value;
 
         // From which zoom step of the large map (0 zoomed out, 1 halfway, 2 zoomed in) pins of this thing show.
@@ -197,6 +220,13 @@ namespace AutoMapPins
             for (var i = 0; i < GroupTitles.Length; i++)
                 Minimaps[i] = Config.Bind(general, "Minimap - " + GroupTitles[i], true,
                     $"Show the pins of {GroupTitles[i]} on the minimap too. Off: only on the large map.");
+            foreach (var group in NearGroups)
+                NearOnly[(int)group] = Config.Bind(general, "Nearby only - " + GroupTitles[(int)group], false,
+                    $"Show the pins of {GroupTitles[(int)group]} only within \"Nearby only - radius\" of you, on the large map and " +
+                    "the minimap. The others are still remembered and show again when you come near. Off: everywhere.");
+            _nearRadius = Config.Bind(general, "Nearby only - radius (m)", 300f, new ConfigDescription(
+                "How far from you the pins of the kinds set to \"Nearby only\" still show, in meters.",
+                new AcceptableValueRange<float>(50f, 5000f)));
             _crossOff = Config.Bind(general, "Cross off looted dungeons", true,
                 "Cross off a dungeon's pin (Burial Chambers, crypts, caves, ...) once you are inside and no chest in it has loot left.");
             _faded = Config.Bind(general, "Faded pin opacity", 0.35f, new ConfigDescription(
@@ -260,6 +290,7 @@ namespace AutoMapPins
         {
             if (Waiting) return;
             Tracker.Tick(Time.unscaledDeltaTime); // real time: also while the game is paused (F1 open)
+            MapView.FollowPlayer();
             MapView.Update();
         }
 
@@ -305,6 +336,8 @@ namespace AutoMapPins
             foreach (var entry in Sizes) Hook(entry, OnLookChanged, on);
             foreach (var entry in Minimaps) Hook(entry, OnLookChanged, on);
             foreach (var entry in Levels) Hook(entry, OnLookChanged, on);
+            foreach (var group in NearGroups) Hook(NearOnly[(int)group], OnLookChanged, on);
+            Hook(_nearRadius, OnLookChanged, on);
             Hook(_portalMinimap, OnLookChanged, on);
             Hook(_size, OnLookChanged, on);
             Hook(_faded, OnLookChanged, on);
