@@ -56,7 +56,10 @@ namespace EnchantingLayout
         private static readonly List<GameObject> Labels = new List<GameObject>();
         private static readonly List<CanvasGroup> Hidden = new List<CanvasGroup>();
         private static readonly List<Behaviour> Disabled = new List<Behaviour>();
-        private static float _leftX;
+        // How far the tab column's middle is left of the panels, in the panels' own units. It was a screen position taken
+        // once: when the window later changed size or GUI scale (the game rescales the HUD from the screen size every
+        // frame), both columns landed on the panels' lists (Anna-Drea, ultrawide, 2026-11-21).
+        private static float _leftGap = float.NaN;
         private static bool _wasOpen;
         private static string _laidOut = "";
 
@@ -122,7 +125,18 @@ namespace EnchantingLayout
             ui.TabHandler.transform.Cast<Transform>().Where(t => t.gameObject.activeSelf && t.GetComponent<Button>() != null)
                 .OrderBy(t => t.name == "DigiSocketCombine" ? 1 : 0).ThenBy(t => t.GetSiblingIndex()).Select(t => (RectTransform)t).ToList();
 
-        private static string Signature(EnchantingTableUI ui) => string.Join("|", Tabs(ui).Select(t => t.name));
+        // What the layout depends on: the tabs, and where and how big the panels are now (a new screen size or GUI scale).
+        private static string Signature(EnchantingTableUI ui)
+        {
+            var panel = Panel(ui);
+            var where = "";
+            if (panel != null)
+            {
+                var c = Corners(panel);
+                where = $"{Mathf.RoundToInt(c[0].x)},{Mathf.RoundToInt(c[0].y)},{Mathf.RoundToInt(c[2].x)},{Mathf.RoundToInt(c[2].y)}";
+            }
+            return string.Join("|", Tabs(ui).Select(t => t.name)) + "#" + where;
+        }
 
         private static RectTransform Panel(EnchantingTableUI ui) =>
             ui.Panels != null ? ui.Panels.Where(p => p != null).Select(p => (RectTransform)p.transform).FirstOrDefault() : null;
@@ -139,7 +153,8 @@ namespace EnchantingLayout
                 return;
             }
             var first = Corners(tabs[0]);
-            _leftX = (first[0].x + first[2].x) * 0.5f;
+            var panelLeft = Corners(panel)[0].x;
+            _leftGap = (panelLeft - (first[0].x + first[2].x) * 0.5f) / Mathf.Max(0.0001f, panel.lossyScale.x);
             foreach (var group in column.GetComponents<LayoutGroup>()) Disable(group);
             foreach (var fitter in column.GetComponents<ContentSizeFitter>()) Disable(fitter);
             // The column clips to its own area (a mask on it or above it): tabs on the right would be cut away.
@@ -231,7 +246,10 @@ namespace EnchantingLayout
                 if (grow > 1f) Grow(frame, grow / Mathf.Max(0.0001f, frame.lossyScale.x));
             }
             var p = Corners(panel);
-            var rightX = p[2].x + (p[0].x - _leftX);
+            if (float.IsNaN(_leftGap)) return;
+            var gap = _leftGap * Mathf.Max(0.0001f, panel.lossyScale.x);
+            var leftX = p[0].x - gap;
+            var rightX = p[2].x + gap;
             var rows = (tabs.Count + 1) / 2;
             var size = Corners(tabs[0]);
             var height = size[2].y - size[0].y;
@@ -245,7 +263,7 @@ namespace EnchantingLayout
                 var row = left ? i : i - rows;
                 var c = Corners(tab);
                 var center = new Vector3((c[0].x + c[2].x) * 0.5f, (c[0].y + c[2].y) * 0.5f, tab.position.z);
-                var target = new Vector3(left ? _leftX : rightX, top - row * step, center.z);
+                var target = new Vector3(left ? leftX : rightX, top - row * step, center.z);
                 tab.position += target - center;
                 Name(tab);
             }

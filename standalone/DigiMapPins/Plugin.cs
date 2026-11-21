@@ -17,7 +17,7 @@ namespace DigiMapPins
     {
         public const string Guid = "digi.valheim.automappins";
         public const string Name = "Digi's Auto Map Pins";
-        public const string Version = "1.2.6";
+        public const string Version = "1.2.7";
 
         protected override ModuleInfo[] Modules { get; } =
         {

@@ -49,7 +49,7 @@ namespace DigiCreative
     {
         public const string Guid = "digi.valheim.creativeworld";
         public const string Name = "Digi's Ultimate Builder";
-        public const string Version = "1.6.8";
+        public const string Version = "1.6.9";
 
         private static ConfigEntry<string> _worlds;
         private static ConfigEntry<float> _radius, _edge, _height, _centerX, _centerZ;

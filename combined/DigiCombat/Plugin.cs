@@ -20,7 +20,7 @@ namespace DigiCombat
     {
         public const string Guid = "digi.valheim.combat";
         public const string Name = "Digi's Combat and Loot";
-        public const string Version = "1.0.25";
+        public const string Version = "1.0.26";
 
         protected override ModuleInfo[] Modules { get; } =
         {
