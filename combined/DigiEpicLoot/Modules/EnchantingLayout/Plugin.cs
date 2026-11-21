@@ -273,6 +273,20 @@ namespace EnchantingLayout
                 Keep(status);
                 status.position += new Vector3(0f, down, 0f);
             }
+            // The progress bar (shown instead of the status bar for the 0.8 s after Sacrifice is pressed, with Cancel on the
+            // button) stayed over the Mythic / Ancient row: it goes where the status bar now is (the user, 2026-11-21).
+            var progress = panel.GetComponent<EnchantingTableUIPanelBase>()?.ProgressBar;
+            if (progress != null && progress.transform is RectTransform bar)
+            {
+                var s = Corners(status);
+                var b = Corners(bar);
+                var dy = (s[0].y + s[2].y) * 0.5f - (b[0].y + b[2].y) * 0.5f;
+                if (Mathf.Abs(dy) > 0.5f)
+                {
+                    Keep(bar);
+                    bar.position += new Vector3(0f, dy, 0f);
+                }
+            }
             down = Corners(status)[0].y - gap - Corners(button)[2].y;
             if (down >= -0.5f) return;
             Keep(button);

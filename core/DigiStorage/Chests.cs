@@ -132,6 +132,7 @@ namespace DigiStorage
             internal bool Dirty = true;
             internal readonly Dictionary<string, int> ReadyMemo = new Dictionary<string, int>();
             internal int ReadyFrame = -1;
+            internal bool LeaveOne; // the "Leave 1 in each chest" rule the sums were made with
 
             public Area(ChestRules rules) { Rules = rules; }
         }
@@ -197,7 +198,8 @@ namespace DigiStorage
         {
             if (area.SumsFrame == UnityEngine.Time.frameCount) return;
             area.SumsFrame = UnityEngine.Time.frameCount;
-            var dirty = area.Dirty;
+            var dirty = area.Dirty || area.LeaveOne != StoreRules.LeaveOne;
+            area.LeaveOne = StoreRules.LeaveOne;
             foreach (var chest in area.List)
             {
                 if (chest == null || chest.m_nview == null || !chest.m_nview.IsValid()) continue;
@@ -221,9 +223,12 @@ namespace DigiStorage
             foreach (var chest in area.List)
             {
                 if (chest == null || OpenByOthers(chest)) continue;
+                Kept.Clear();
                 foreach (var item in chest.GetInventory().GetAllItems())
                 {
                     if (item?.m_shared == null) continue;
+                    // "Leave 1 in each chest": the first one of each item in a chest does not count.
+                    var amount = area.LeaveOne && Kept.Add(item.m_shared.m_name) ? item.m_stack - 1 : item.m_stack;
                     if (!area.Sums.TryGetValue(item.m_shared.m_name, out var stacks))
                         area.Sums[item.m_shared.m_name] = stacks = new List<Stack>(2);
                     Stack found = null;
@@ -234,9 +239,19 @@ namespace DigiStorage
                             break;
                         }
                     if (found == null) stacks.Add(found = new Stack { Quality = item.m_quality, WorldLevel = item.m_worldLevel });
-                    found.Amount += item.m_stack;
+                    found.Amount += amount;
                 }
             }
+        }
+
+        private static readonly HashSet<string> Kept = new HashSet<string>();
+
+        // What may be taken from one chest: with "Leave 1 in each chest" (StoreRules) its last one of the item stays.
+        private static int Usable(Inventory inventory, string name, int quality, bool matchWorldLevel)
+        {
+            var have = inventory.CountItems(name, quality, matchWorldLevel);
+            if (have <= 0 || !StoreRules.LeaveOne) return have;
+            return Mathf.Max(0, Mathf.Min(have, inventory.CountItems(name, -1, false) - 1));
         }
 
         // Like Inventory.CountItems, for all the chests of the area together.
@@ -268,7 +283,7 @@ namespace DigiStorage
             {
                 if (!Ready(chest)) continue;
                 Fresh(chest);
-                total += chest.GetInventory().CountItems(name, quality, matchWorldLevel);
+                total += Usable(chest.GetInventory(), name, quality, matchWorldLevel);
             }
             area.ReadyMemo[key] = total;
             return total;
@@ -284,7 +299,7 @@ namespace DigiStorage
                 if (!Ready(chest)) continue;
                 Fresh(chest);
                 var inventory = chest.GetInventory();
-                var have = inventory.CountItems(name, quality, matchWorldLevel);
+                var have = Usable(inventory, name, quality, matchWorldLevel);
                 if (have <= 0) continue;
                 var n = Mathf.Min(have, amount);
                 inventory.RemoveItem(name, n, quality, matchWorldLevel);
@@ -308,7 +323,7 @@ namespace DigiStorage
             {
                 if (missing <= 0) break;
                 if (chest == null || Ready(chest) || OpenByOthers(chest)) continue;
-                var have = chest.GetInventory().CountItems(name, quality, matchWorldLevel);
+                var have = Usable(chest.GetInventory(), name, quality, matchWorldLevel);
                 if (have <= 0) continue;
                 Request(chest);
                 missing -= have;

@@ -17,7 +17,7 @@ namespace DigiPlanting
     {
         public const string Guid = "digi.valheim.plantingtools";
         public const string Name = "Digi's Planting Tools";
-        public const string Version = "1.1.9";
+        public const string Version = "1.1.10";
 
         protected override ModuleInfo[] Modules { get; } =
         {

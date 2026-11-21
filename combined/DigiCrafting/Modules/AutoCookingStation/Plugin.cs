@@ -55,6 +55,7 @@ namespace AutoCookingStation
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             _iron = Config.Bind("General", "Iron cooking station", true, "Iron cooking stations run themselves. Off = they work as in the normal game.");
             _wooden = Config.Bind("General", "Wooden cooking station", true, "Wooden cooking stations run themselves. Off = they work as in the normal game.");
             _fill = Config.Bind("General", "Fill from chests", true,
@@ -193,10 +194,12 @@ namespace AutoCookingStation
             if (_fill.Value && Enumerable.Range(0, slots).Any(i => zdo.GetString("slot" + i) == "") && FireLit(station))
             {
                 var chests = UsableChests(station, _inputRange.Value);
+                var raw = StoreRules.InputNames(station.m_conversion, c => c.m_from);
                 for (var i = 0; i < slots; i++)
                 {
                     if (zdo.GetString("slot" + i) != "") continue;
-                    if (!StoreRules.TakeOne(chests, item => item.m_dropPrefab != null && CanCook(station, item.m_dropPrefab.name), out var taken))
+                    if (!StoreRules.TakeOne(chests, item => item.m_dropPrefab != null && raw.Contains(StoreRules.NameOf(item.m_dropPrefab)) &&
+                            CanCook(station, StoreRules.NameOf(item.m_dropPrefab)), out var taken))
                         break;
                     view.InvokeRPC("RPC_AddItem", taken.m_dropPrefab.name, taken.m_cheated);
                     if (_xp.Value && station.m_skill != Skills.SkillType.None) Player.m_localPlayer.RaiseSkill(station.m_skill, 0.4f);
@@ -208,7 +211,7 @@ namespace AutoCookingStation
         {
             foreach (var conversion in station.m_conversion)
             {
-                if (conversion?.m_from == null || conversion.m_from.name != prefab) continue;
+                if (conversion?.m_from == null || StoreRules.NameOf(conversion.m_from) != prefab) continue;
                 if (!_items.TryGetValue(prefab, out var entry))
                     _items[prefab] = entry = BindItem(Localization.instance.Localize(conversion.m_from.m_itemData.m_shared.m_name));
                 return entry.Value;
@@ -219,7 +222,7 @@ namespace AutoCookingStation
         private static bool AboutToBurn(CookingStation station, ZDO zdo, int slot, string cooked)
         {
             if (!station.m_canOvercookItems) return false;
-            var conversion = station.m_conversion.FirstOrDefault(c => c?.m_to != null && c.m_to.name == cooked);
+            var conversion = station.m_conversion.FirstOrDefault(c => c?.m_to != null && StoreRules.NameOf(c.m_to) == cooked);
             return conversion == null || zdo.GetFloat("slot" + slot) > conversion.m_cookTime * 2f - LastMoment;
         }
 
@@ -251,7 +254,7 @@ namespace AutoCookingStation
             foreach (var chest in Chests)
             {
                 if ((chest.transform.position - at).sqrMagnitude > reach * reach) continue;
-                if (chest.m_wagon != null || chest.GetComponentInParent<Ship>() != null || chest.GetComponent<TombStone>() != null) continue;
+                if (StoreRules.CartShipOrGrave(chest)) continue;
                 var piece = ChestPiece(chest);
                 if (piece == null) continue; // only built chests
                 var gap = Gap(edge, BoundsOf(chest));
@@ -273,7 +276,9 @@ namespace AutoCookingStation
         }
 
         // What the player bumps into, in world space; only a point when the object has no solid collider.
-        private static Bounds BoundsOf(Component owner)
+        private static Bounds BoundsOf(Component owner) => StoreRules.SolidBounds(owner, Measure);
+
+        private static Bounds Measure(Component owner)
         {
             var bounds = new Bounds(owner.transform.position, Vector3.zero);
             var first = true;

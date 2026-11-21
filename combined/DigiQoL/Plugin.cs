@@ -19,7 +19,7 @@ namespace DigiQoL
     {
         public const string Guid = "digi.valheim.qol";
         public const string Name = "Digi's Inventory and QoL";
-        public const string Version = "1.0.35";
+        public const string Version = "1.0.37";
 
         protected override ModuleInfo[] Modules { get; } =
         {

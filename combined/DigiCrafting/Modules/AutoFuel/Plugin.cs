@@ -36,6 +36,7 @@ namespace AutoFuel
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             _instance = this;
             _range = Config.Bind("General", "Chest range (m)", 100f, new ConfigDescription(
                 "Chests up to this many metres from a fire or light are used for its fuel.", new AcceptableValueRange<float>(5f, 200f)));
@@ -154,7 +155,7 @@ namespace AutoFuel
                 if (chest == null) continue;
                 var dist = (chest.transform.position - at).sqrMagnitude;
                 if (dist > range * range) continue;
-                if (chest.m_wagon != null || chest.GetComponentInParent<Ship>() != null || chest.GetComponent<TombStone>() != null) continue;
+                if (StoreRules.CartShipOrGrave(chest)) continue;
                 var piece = ChestPiece(chest);
                 if (piece == null) continue; // only built chests
                 if (chest.m_privacy == Container.PrivacySetting.Private && piece.GetCreator() != me) continue;

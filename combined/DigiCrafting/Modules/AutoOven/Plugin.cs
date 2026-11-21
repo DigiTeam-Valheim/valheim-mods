@@ -59,6 +59,7 @@ namespace AutoOven
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             MigrateConfig();
             _enabled = Config.Bind("General", "Enabled", true, "Ovens fill, fuel and empty themselves using the chests near them.");
             _range = Config.Bind("General", "Chest range (m)", 10f,
@@ -206,7 +207,7 @@ namespace AutoOven
                     if (item == "" || zdo.GetInt("slotstatus" + i) == NotDone) continue;
                     var prefab = ObjectDB.instance.GetItemPrefab(item);
                     if (prefab == null) continue;
-                    var burnt = oven.m_overCookedItem != null && item == oven.m_overCookedItem.name;
+                    var burnt = oven.m_overCookedItem != null && item == StoreRules.NameOf(oven.m_overCookedItem);
                     var player = Player.m_localPlayer;
                     var amount = 1;
                     if (_xp.Value && !burnt && oven.m_canGiveBonusYield &&
@@ -228,7 +229,8 @@ namespace AutoOven
                 {
                     if (zdo.GetString("slot" + i) != "") continue;
                     input = input ?? UsableChests(oven, _inputRange.Value);
-                    if (!StoreRules.TakeOne(input, item => oven.m_conversion.Any(c => c.m_from != null && c.m_from.name == item.m_dropPrefab?.name), out var taken))
+                    var raw = StoreRules.InputNames(oven.m_conversion, c => c.m_from);
+                    if (!StoreRules.TakeOne(input, item => item.m_dropPrefab != null && raw.Contains(StoreRules.NameOf(item.m_dropPrefab)), out var taken))
                         break;
                     view.InvokeRPC("RPC_AddItem", taken.m_dropPrefab.name, taken.m_cheated);
                     if (_xp.Value && oven.m_skill != Skills.SkillType.None) Player.m_localPlayer.RaiseSkill(oven.m_skill, 0.4f);
@@ -314,7 +316,7 @@ namespace AutoOven
                 if (chest == null) continue; // destroyed or unloaded since the last clean-up
                 var byHand = player.HasValue && (chest.transform.position - player.Value).sqrMagnitude <= handRange * handRange;
                 if (!byHand && (chest.transform.position - at).sqrMagnitude > reach * reach) continue;
-                if (chest.m_wagon != null || chest.GetComponentInParent<Ship>() != null || chest.GetComponent<TombStone>() != null) continue;
+                if (StoreRules.CartShipOrGrave(chest)) continue;
                 var piece = ChestPiece(chest);
                 if (piece == null) continue; // only built chests
                 var dist = byHand ? Vector3.Distance(player.Value, chest.transform.position) : Gap(edge, BoundsOf(chest));
@@ -336,7 +338,9 @@ namespace AutoOven
         }
 
         // The space a piece takes up (its solid colliders), and the gap between two such boxes (0 when they touch).
-        private static Bounds BoundsOf(Component owner)
+        private static Bounds BoundsOf(Component owner) => StoreRules.SolidBounds(owner, Measure);
+
+        private static Bounds Measure(Component owner)
         {
             var bounds = new Bounds(owner.transform.position, Vector3.zero);
             var first = true;

@@ -432,6 +432,7 @@ namespace DigiCore
         }
 
         public ConfigFile File => _file;
+        internal bool Standalone => _prefix.Length == 0; // a Hexium single: sections without a sub-mod name
         public string ConfigFilePath => _file.ConfigFilePath;
         public void Reload() { }
         public void Save() => _file.Save();

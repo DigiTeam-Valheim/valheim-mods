@@ -86,9 +86,13 @@ namespace DigiStorage
             SyncTitle(gui);
         }
 
-        // While the window closes (it slides away for a moment, and the game still calls it visible for a frame), nothing
+        // While the window closes (it slides away for a moment, and the game still calls it visible meanwhile), nothing
         // changes: the boxes go with the panel. Hidden at once, they vanished before the rest of the chest (2026-11-20).
-        public static bool Closing(InventoryGui gui) => gui.m_hiddenFrames > 0; // counts up from the frame the window was hidden
+        // m_hiddenFrames counts up only from the frame AFTER Hide; in Hide's own frame it is still 0, but Hide set
+        // m_shownFrames to 0 (open, every Update raises it to 1 or more first). Missing that frame let Store Nearby's
+        // button come up as the chest left (no chest = its place) and fly away with the panel, To Backpacks with it
+        // (the user, 2026-11-21). A window opened by Show inside the game's Update waits one frame: harmless.
+        public static bool Closing(InventoryGui gui) => gui.m_hiddenFrames > 0 || gui.m_shownFrames == 0;
 
         public void Update(InventoryGui gui, bool show)
         {

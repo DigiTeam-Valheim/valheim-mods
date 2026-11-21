@@ -13,6 +13,7 @@
 // - Reduce Eitr Cost: staff tooltips and the cast check know about the shard: see EitrCost.cs.
 // - Darting Thoughts limit: its max eitr penalty stops at a set limit: see DartingThoughtsCap.cs.
 // - Sort effects: tooltips show the magic effects by stars, then by name: see SortedEffects.cs.
+// - Extra stars: Double Magic Shot (and any effect set) shows at least 2 stars: see ExtraStars.cs.
 // - Sockets on worn gear: the socket shortcut also works in CDEV Equipment Slots' panel: see WornSockets.cs.
 // Epic Loot 0.15 fixed two things this did before itself: the eitr cost in enchanted staffs' tooltips, and skipping
 // chests whose contents did not change when they load.
@@ -83,6 +84,7 @@ namespace EpicLootFixes
             EitrCost.Bind(Config);
             DartingThoughtsCap.Bind(Config);
             SortedEffects.Bind(Config);
+            ExtraStars.Bind(Config);
             LuckyTotal.Bind(Config);
             WornSockets.Bind(Config);
             var harmony = PatchModule(typeof(Plugin));
@@ -92,6 +94,7 @@ namespace EpicLootFixes
             PatchModule(typeof(EitrCost));
             DartingThoughtsCap.Patch(harmony, Logger);
             SortedEffects.Patch(harmony, Logger);
+            ExtraStars.Patch(harmony, Logger);
             LuckyTotal.Patch(harmony, Logger);
             WornSockets.Patch(harmony, Logger);
             DamageStacking.Start();

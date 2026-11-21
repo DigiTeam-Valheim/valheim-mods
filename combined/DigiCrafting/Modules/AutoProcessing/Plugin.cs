@@ -107,6 +107,7 @@ namespace AutoProcessing
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             _log = Logger;
             var migrated = MigrateConfig();
             _enabled = Config.Bind("1 - General", "Automation enabled", true,
@@ -255,7 +256,7 @@ namespace AutoProcessing
                 foreach (var chest in chests)
                     foreach (var item in chest.GetInventory().GetAllItems())
                     {
-                        var name = item.m_dropPrefab != null ? item.m_dropPrefab.name : null;
+                        var name = StoreRules.NameOf(item.m_dropPrefab);
                         if (name == input) left += item.m_stack;
                         else if (name != null && made.Contains(name)) ground += item.m_stack;
                     }
@@ -594,11 +595,11 @@ namespace AutoProcessing
                 var chest = StoreRules.PickOutputChest(UsableChests(__instance.transform.position), prefab, stack);
                 if (chest == null)
                 {
-                    // no room: drop it like vanilla
+                    // no room (or no chest with it, under "Only store into chests that already have it"): drop it like vanilla
                     if (Time.time >= _nextDropLog)
                     {
                         _nextDropLog = Time.time + 60f;
-                        _log.LogInfo($"No chest with room for {stack} {prefab.name} within {_range.Value} m of the station at {__instance.transform.position}: it drops.");
+                        _log.LogInfo($"No chest {(StoreRules.OnlyMatching ? "that already has" : "with room for")} {stack} {prefab.name} within {_range.Value} m of the station at {__instance.transform.position}: it drops.");
                     }
                     return true;
                 }
@@ -805,8 +806,9 @@ namespace AutoProcessing
         {
             var station = feed.Station;
             feed.Chests = feed.Chests ?? UsableChests(station.transform.position, _inputRange.Value);
-            if (!StoreRules.TakeOne(feed.Chests, i => i.m_dropPrefab != null && InputAllowed(feed.Settings, i.m_dropPrefab.name) &&
-                    station.m_conversion.Any(c => c.m_from != null && c.m_from.gameObject.name == i.m_dropPrefab.name), out var taken))
+            var raw = StoreRules.InputNames(station.m_conversion, c => c.m_from);
+            if (!StoreRules.TakeOne(feed.Chests, i => i.m_dropPrefab != null && raw.Contains(StoreRules.NameOf(i.m_dropPrefab)) &&
+                    InputAllowed(feed.Settings, StoreRules.NameOf(i.m_dropPrefab)), out var taken))
                 return false;
             feed.View.InvokeRPC("RPC_AddOre", taken.m_dropPrefab.name, taken.m_cheated);
             if (feed.Settings.Budget.TryGetValue(taken.m_dropPrefab.name, out var left)) feed.Settings.Budget[taken.m_dropPrefab.name] = left - 1;
@@ -845,7 +847,7 @@ namespace AutoProcessing
             var dists = new Dictionary<Container, float>();
             foreach (var chest in Chests)
             {
-                if (chest == null || chest.m_wagon != null || chest.GetComponentInParent<Ship>() != null || chest.GetComponent<TombStone>() != null) continue;
+                if (chest == null || StoreRules.CartShipOrGrave(chest)) continue;
                 var piece = ChestPiece(chest);
                 if (piece == null) continue; // only built chests
                 var dist = Vector3.Distance(at, chest.transform.position);

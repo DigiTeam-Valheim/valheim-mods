@@ -1,4 +1,5 @@
-// Chest Snapping: chests, rugs, fermenters and furniture have no snap points in the game, so they never line up and Q / E
+// Extra Snap Points (was Chest Snapping, renamed 2026-11-20: it snaps far more than chests; its settings carry over
+// once): chests, rugs, fermenters and furniture have no snap points in the game, so they never line up and Q / E
 // (the game's keys that pick which snap point of the piece you hold goes onto the aimed spot) do nothing while placing one.
 // - Chests (any piece with a container at its root: wood, reinforced, personal, black metal and Grausten chests,
 //   barrels, the wardrobe, modded chests) get fourteen snap points: the eight corners of their box, the middle of each
@@ -28,6 +29,10 @@
 //   base, sized from their colliders (the windmill from its stone base, not its blade arms): flush side by side and onto
 //   floor tiles by the 3 x 3 zones. The Frost Foundry keeps its own four corner points too (3.5 x 5.5 m: they never put
 //   it on the 2 m floor grid). The oven needs nothing: its own points are its 2 x 2 m base, so it already fits a tile.
+// - The ballista (anything with a turret: the game's piece_turret, other mods' ones) snaps like a machine: nine points on
+//   its base, sized from its collider (2.2 x 2.46 m, the turning bow is no part of it): flush side by side and onto
+//   floor tiles by the 3 x 3 zones; wider than a tile, its middle goes onto the seam between two floor pieces or a tile's
+//   middle.
 // - Portals (the wood and stone portals, other mods' ones: anything with a teleport frame) get nine points on their base,
 //   sized from their colliders, like machines: flush side by side and onto floor tiles by the 3 x 3 zones. Wider than a
 //   tile, a portal goes with its middle onto the seam between two floor pieces or onto a tile's middle. Should a portal
@@ -67,7 +72,7 @@ namespace ChestSnapping
     public class Plugin : DigiCore.DigiModule
     {
         public const string Guid = "digi.valheim.chestsnapping";
-        public const string Name = "Digi's Chest Snapping";
+        public const string Name = "Digi's Extra Snap Points";
         public const string Version = "1.4.1";
 
         // The kinds of piece that get snap points (0: none). Our points' names start with the kind's word (the game shows
@@ -83,7 +88,7 @@ namespace ChestSnapping
         private const float SconceStep = 0.25f; // a sconce's height on a beam, in steps from the beam's foot
 
         private static ConfigEntry<bool> _otherPieces, _floorTiles, _rugs, _fermenters, _seats, _tables, _beds, _hotTub, _machines, _portals, _bigFloors, _hanging, _sconces, _lights;
-        private static ConfigEntry<bool> _itemStands, _mapTable;
+        private static ConfigEntry<bool> _itemStands, _mapTable, _ballistas;
         private static readonly Dictionary<int, int> Kinds = new Dictionary<int, int>();             // piece -> kind
         private static readonly Dictionary<int, Vector3[]> Tiles = new Dictionary<int, Vector3[]>(); // piece -> its targets
         private static readonly Dictionary<int, float> Unders = new Dictionary<int, float>();        // piece -> its underside (own space)
@@ -131,63 +136,68 @@ namespace ChestSnapping
 
         private void Awake()
         {
-            _otherPieces = Config.Bind("Chest Snapping", "Snap to other pieces", false,
+            _otherPieces = Config.Bind("Snapping", "Snap to other pieces", false,
                 "Chests, rugs, fermenters and furniture also snap to the snap points of walls, beams and other pieces, and " +
                 "those to them. Off: each snaps to its own kind and to floor tiles only, so a chest near a wall stays where you aim.");
-            _floorTiles = Config.Bind("Chest Snapping", "Snap to floor tiles", true,
+            _floorTiles = Config.Bind("Snapping", "Snap to floor tiles", true,
                 "Chests, rugs, fermenters and furniture snap onto floor tiles (and other flat pieces): flush with a tile's " +
                 "edge and centred along it, or right in the middle of the tile, so they do not hang over onto the next tile. " +
                 "The floors themselves snap as before.");
-            _rugs = Config.Bind("Chest Snapping", "Rugs", true,
+            _rugs = Config.Bind("Snapping", "Rugs", true,
                 "Rugs (the game's and Nordic Rugs', not the wall versions) get snap points too: flush side by side, and onto " +
                 "floor tiles.");
-            _fermenters = Config.Bind("Chest Snapping", "Fermenters", true,
+            _fermenters = Config.Bind("Snapping", "Fermenters", true,
                 "Fermenters get snap points too: flush side by side, and onto floor tiles (in the middle of a tile).");
-            _seats = Config.Bind("Chest Snapping", "Chairs benches and thrones", true,
+            _seats = Config.Bind("Snapping", "Chairs benches and thrones", true,
                 "Everything you can sit on (stools, chairs, benches, thrones, also other mods' seats; not ships or the hot tub) " +
                 "gets snap points too: flush side by side and against tables, and onto floor tiles.");
-            _tables = Config.Bind("Chest Snapping", "Tables", true,
+            _tables = Config.Bind("Snapping", "Tables", true,
                 "Tables (not crafting tables like the workbench or the cartography table) get snap points too: flush side by " +
                 "side and against chairs and benches, and onto floor tiles.");
-            _beds = Config.Bind("Chest Snapping", "Beds", true,
+            _beds = Config.Bind("Snapping", "Beds", true,
                 "Beds (the simple bed, the dragon bed, the Ashwood bed, also other mods' beds) get snap points too: flush side " +
                 "by side and against other furniture, and onto floor tiles (a bed wider than a tile goes with its middle onto " +
                 "the seam between two floor pieces or onto a tile's middle).");
-            _hotTub = Config.Bind("Chest Snapping", "Hot tub", true,
+            _hotTub = Config.Bind("Snapping", "Hot tub", true,
                 "The hot tub snaps onto floor tiles by its middle, at any turn: onto a corner where floors meet, the middle of the " +
                 "seam between two floor pieces, or a tile's middle, by the 3 x 3 zone its middle is over (turned along the floor, " +
                 "its stove then lies on a seam). Its own eight points around its base stay for Q / E.");
-            _machines = Config.Bind("Chest Snapping", "Machines", true,
+            _machines = Config.Bind("Snapping", "Machines", true,
                 "Smelters, the blast furnace, charcoal kilns, the eitr refinery, the windmill, the spinning wheel, the Frost kiln " +
                 "and the Frost Foundry (also other mods' machines that work like a smelter) get snap points too: flush side by " +
                 "side and onto floor tiles by the 3 x 3 zones (one wider than a tile goes with its middle onto the seam between " +
                 "two floor pieces or onto a tile's middle). The oven needs nothing: its own points already fit a floor tile.");
-            _portals = Config.Bind("Chest Snapping", "Portals", true,
+            _portals = Config.Bind("Snapping", "Portals", true,
                 "The wood and stone portals (also other mods' portals) get snap points on their base: flush side by side and " +
                 "onto floor tiles by the 3 x 3 zones. A portal is wider than a floor tile, so across it its middle goes onto the " +
                 "seam between two floor pieces (aim near the seam) or onto a tile's middle; front to back it lies flush with " +
                 "the tile's edge or centred on it.");
-            _bigFloors = Config.Bind("Chest Snapping", "4x4 floors as four 2x2 tiles", true,
+            _bigFloors = Config.Bind("Snapping", "4x4 floors as four 2x2 tiles", true,
                 "The 4 x 4 floors (Grausten and stone) get snap points in the middle of each edge and in the middle: other " +
                 "floors, walls and beams snap to them every 2 m, as if they were four 2 x 2 floors, and chests, rugs and " +
                 "furniture see four tiles of 3 x 3 zones on them (6 x 6 in all).");
-            _hanging = Config.Bind("Chest Snapping", "Hanging braziers", true,
+            _hanging = Config.Bind("Snapping", "Hanging braziers", true,
                 "The hanging brazier (and other pieces that hang from a ceiling) snaps under floor tiles by where you aim: to a " +
                 "corner, the middle of an edge or the dead centre of the tile (on a 4 x 4 floor every metre).");
-            _sconces = Config.Bind("Chest Snapping", "Sconces on beams", true,
+            _sconces = Config.Bind("Snapping", "Sconces on beams", true,
                 "A sconce aimed at a standing beam, pole or pillar goes flush against the side you aim at, centred on it and " +
                 "facing out from it, its height in 25 cm steps from the beam's foot.");
-            _lights = Config.Bind("Chest Snapping", "Lanterns braziers and fire pit", true,
+            _lights = Config.Bind("Snapping", "Lanterns braziers and fire pit", true,
                 "The lava lantern, the standing braziers (also the blue one) and the iron fire pit snap onto floor tiles by the " +
                 "3 x 3 zones and flush side by side; the lantern and the braziers also onto beams: centred on top of a standing " +
                 "beam or post, or on top of a lying beam (at an end or in the middle, by where you aim).");
-            _itemStands = Config.Bind("Chest Snapping", "Item stands", true,
+            _itemStands = Config.Bind("Snapping", "Item stands", true,
                 "Item stands snap too. The standing one like the lanterns: onto floor tiles by the 3 x 3 zones, flush side by " +
                 "side, and on top of beams. The wall one onto walls by where you aim: into a corner of the wall, flush with an " +
                 "edge and centred along it, or in the middle, facing out (a wall with snap points every 2 m counts as tiles); " +
                 "onto a standing beam like a sconce.");
-            _mapTable = Config.Bind("Chest Snapping", "Cartography table", true,
+            _mapTable = Config.Bind("Snapping", "Cartography table", true,
                 "The cartography table snaps like furniture: flush side by side and against tables and benches, and onto floor tiles.");
+            _ballistas = Config.Bind("Snapping", "Ballistas", true,
+                "The ballista snaps like the machines: flush side by side and onto floor tiles by the 3 x 3 zones (it is wider " +
+                "than a tile: across it, its middle goes onto the seam between two floor pieces or onto a tile's middle).");
+            if (FirstTime("settings from Chest Snapping")) FromChestSnapping();
+            _ballistas.SettingChanged += Changed;
             _itemStands.SettingChanged += Changed;
             _mapTable.SettingChanged += Changed;
             _rugs.SettingChanged += Changed;
@@ -206,12 +216,49 @@ namespace ChestSnapping
             PatchModule(typeof(Plugin));
         }
 
+        // Renamed from Chest Snapping: its settings carry over once, from "[Chest Snapping - Chest Snapping]" (Building
+        // Tweaks; BepInEx keeps entries nobody binds in the file) or "[Chest Snapping]" (the Hexium single).
+        private void FromChestSnapping()
+        {
+            try
+            {
+                var path = Config.ConfigFilePath;
+                if (!System.IO.File.Exists(path)) return;
+                var inSection = false;
+                var copied = 0;
+                foreach (var raw in System.IO.File.ReadAllLines(path))
+                {
+                    var line = raw.Trim();
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        inSection = line == "[Chest Snapping - Chest Snapping]" || line == "[Chest Snapping]";
+                        continue;
+                    }
+                    var eq = line.IndexOf(" = ", StringComparison.Ordinal);
+                    if (!inSection || line.StartsWith("#") || eq <= 0) continue;
+                    var key = line.Substring(0, eq).Trim();
+                    foreach (var bound in Config.Entries)
+                    {
+                        if (bound.Section != "Snapping" || bound.Key != key) continue;
+                        bound.Entry.SetSerializedValue(line.Substring(eq + 3));
+                        copied++;
+                    }
+                }
+                if (copied > 0) Logger.LogInfo($"{copied} setting(s) of Chest Snapping carried over.");
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Chest Snapping's settings not carried over: " + e.Message);
+            }
+        }
+
         // A kind switched on or off: the points go and come back as the settings now say.
         private static void Changed(object sender, EventArgs e) => Reset();
 
         // Switched off: the pieces in the world lose the points again.
         private void OnDestroy()
         {
+            _ballistas.SettingChanged -= Changed;
             _itemStands.SettingChanged -= Changed;
             _mapTable.SettingChanged -= Changed;
             _rugs.SettingChanged -= Changed;
@@ -294,6 +341,8 @@ namespace ChestSnapping
             // A portal (anything with a teleport frame: the wood and stone portals, other mods' ones). Should one have snap
             // points of its own, it keeps them and gets ours beside them.
             if (_portals.Value && root.GetComponentInChildren<TeleportWorld>() != null && !Moves(root)) return Portal;
+            // A ballista (a turret): like a machine, sized from its collider.
+            if (_ballistas.Value && root.GetComponentInChildren<Turret>() != null && !OwnPoints(root) && !Moves(root)) return Machine;
             if ((_seats.Value || _tables.Value || _beds.Value) && IsFurniture(root, name)) return Furniture;
             return None;
         }

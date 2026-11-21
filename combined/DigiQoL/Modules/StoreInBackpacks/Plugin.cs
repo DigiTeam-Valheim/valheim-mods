@@ -179,6 +179,8 @@ namespace StoreInBackpacks
                 _nextCheck = 0f; // checked again at once when the inventory opens
                 return;
             }
+            // Closing (the window slides away): the buttons stay as they were and go with it.
+            if (DigiStorage.ChestCheckbox.Closing(gui)) return;
             var container = CurrentContainer(gui);
             var due = Time.unscaledTime >= _nextCheck;
             if (due) _nextCheck = Time.unscaledTime + 0.25f;

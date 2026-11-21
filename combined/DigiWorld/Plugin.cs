@@ -17,7 +17,7 @@ namespace DigiWorld
     {
         public const string Guid = "digi.valheim.world";
         public const string Name = "Digi's World and Performance";
-        public const string Version = "1.0.21";
+        public const string Version = "1.0.22";
 
         // The modpack's settings files, put in place once (PackSeed.cs) before any sub-mod reads its settings.
         protected override void Awake()

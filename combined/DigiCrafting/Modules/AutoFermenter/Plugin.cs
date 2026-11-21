@@ -44,6 +44,7 @@ namespace AutoFermenter
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             MigrateConfig();
             _enabled = Config.Bind("General", "Enabled", true, "Fermenters fill and empty themselves using the chests near them.");
             _range = Config.Bind("General", "Chest range (m)", 10f,
@@ -110,7 +111,7 @@ namespace AutoFermenter
             if (content != 0)
             {
                 if (!_empty.Value || !IsReady(fermenter, zdo)) return;
-                var conversion = fermenter.m_conversion.FirstOrDefault(c => c.m_from != null && c.m_from.name.GetStableHashCode() == content);
+                var conversion = fermenter.m_conversion.FirstOrDefault(c => c.m_from != null && StoreRules.NameOf(c.m_from).GetStableHashCode() == content);
                 if (conversion?.m_to == null) return;
                 var chest = StoreRules.PickOutputChest(UsableChests(fermenter.transform.position), conversion.m_to.gameObject, conversion.m_producedItems);
                 if (chest == null) return; // no room: leave it ready in the barrel
@@ -123,8 +124,9 @@ namespace AutoFermenter
             }
 
             if (!_fill.Value) return;
+            var bases = StoreRules.InputNames(fermenter.m_conversion, c => c.m_from);
             if (StoreRules.TakeOne(UsableChests(fermenter.transform.position), i => i.m_dropPrefab != null &&
-                    fermenter.m_conversion.Any(c => c.m_from != null && c.m_from.name == i.m_dropPrefab.name), out var taken))
+                    bases.Contains(StoreRules.NameOf(i.m_dropPrefab)), out var taken))
                 view.InvokeRPC("RPC_AddItem", taken.m_dropPrefab.name.GetStableHashCode(), taken.m_cheated);
         }
 
@@ -145,11 +147,11 @@ namespace AutoFermenter
             var dists = new Dictionary<Container, float>();
             foreach (var chest in Chests)
             {
-                if (chest.m_wagon != null || chest.GetComponentInParent<Ship>() != null || chest.GetComponent<TombStone>() != null) continue;
-                var piece = ChestPiece(chest);
-                if (piece == null) continue; // only built chests
                 var dist = Vector3.Distance(at, chest.transform.position);
                 if (dist > range) continue;
+                if (StoreRules.CartShipOrGrave(chest)) continue;
+                var piece = ChestPiece(chest);
+                if (piece == null) continue; // only built chests
                 if (chest.m_privacy == Container.PrivacySetting.Private && piece.GetCreator() != me) continue;
                 if (chest.m_privacy == Container.PrivacySetting.Group) continue;
                 var view = ChestView(chest);

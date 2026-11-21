@@ -156,11 +156,31 @@ namespace ChestSorter
         // its "in use" value, which raises the revision without touching the items, and while open it never reloads.)
         // Byte for byte first; if that differs, the same items in the same places count: Epic Loot gear's durability
         // changes a little in memory after loading without a save, which made chests with magic items never sort.
+        // Found current once, a chest stays current while its network data holds the very same items array: the game puts
+        // a new array there whenever the chest is saved (any change this PC makes) or another player's change arrives.
+        // The full check read a chest of Epic Loot gear a second time, and Epic Loot unpacks the data of every magic item
+        // it loads: ~19 ms each time such a chest was opened (probe in the user's game, 2026-11-20).
+        private static readonly Dictionary<Container, byte[]> Checked = new Dictionary<Container, byte[]>();
+        private static int _checkedPruneAt = 256;
+
         private static bool ContentsCurrent(Container chest, ZDO zdo)
         {
             var inv = chest.GetInventory();
             var stored = zdo.GetByteArray(ZDOVars.s_items);
             if (stored == null) return inv.NrOfItems() == 0;
+            if (Checked.TryGetValue(chest, out var seen) && ReferenceEquals(seen, stored)) return true;
+            if (!FullCheck(chest, inv, stored)) return false;
+            if (Checked.Count >= _checkedPruneAt)
+            {
+                foreach (var gone in Checked.Keys.Where(c => c == null).ToList()) Checked.Remove(gone);
+                _checkedPruneAt = Math.Max(256, Checked.Count * 2);
+            }
+            Checked[chest] = stored;
+            return true;
+        }
+
+        private static bool FullCheck(Container chest, Inventory inv, byte[] stored)
+        {
             var pkg = new ZPackage();
             inv.Save(pkg);
             var shown = pkg.GetArray();

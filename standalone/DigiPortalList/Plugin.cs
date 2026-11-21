@@ -17,7 +17,7 @@ namespace DigiPortalList
     {
         public const string Guid = "digi.valheim.portallist";
         public const string Name = "Digi's Portal List";
-        public const string Version = "1.0.10";
+        public const string Version = "1.0.11";
 
         protected override ModuleInfo[] Modules { get; } =
         {

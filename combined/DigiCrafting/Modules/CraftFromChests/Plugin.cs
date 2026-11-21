@@ -38,6 +38,7 @@ namespace CraftFromChests
 
         private void Awake()
         {
+            StoreRules.BindRules(Config); // the shared Chest rules (StoreRules)
             Log = Logger;
             const string chests = "1 - Chests", use = "2 - Use chests for", show = "3 - Show";
             Range = Config.Bind(chests, "Range (m)", 50f, new ConfigDescription(
