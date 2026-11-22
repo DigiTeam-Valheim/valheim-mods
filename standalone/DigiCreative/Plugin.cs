@@ -20,7 +20,8 @@
 // - Remove Building (RemoveBuilding.cs): click a building twice (within 5 s) to remove every connected piece.
 // - Stability meter (DigiShared/StabilityMeter.cs): below the crosshair while the hammer is out, how stable the aimed
 //   piece will end up, red "Will collapse" when it will come down (off while Building Tweaks' Stability Meter is on).
-// - Free fuel: fires, torches, braziers, candles, the hot tub, ovens, smelters and shield generators stay full.
+// - Free fuel: fires, torches, braziers, candles, the hot tub and shield generators stay full. Not the stations (smelters,
+//   kilns, the frost foundry, ovens): they stand still here anyway, and a full tank spilled its fuel when removed.
 // - Stations stand still: smelters, kilns, the windmill, the spinning wheel, ovens, the frost foundry, cooking stations
 //   and fermenters make nothing and burn no fuel (their clock stands still). Crafting and Automation's stations take
 //   nothing from chests here either (it asks this mod's _active).
@@ -49,7 +50,7 @@ namespace DigiCreative
     {
         public const string Guid = "digi.valheim.creativeworld";
         public const string Name = "Digi's Ultimate Builder";
-        public const string Version = "1.6.9";
+        public const string Version = "1.6.10";
 
         private static ConfigEntry<string> _worlds;
         private static ConfigEntry<float> _radius, _edge, _height, _centerX, _centerZ;
@@ -112,8 +113,8 @@ namespace DigiCreative
                 "falls down for lack of support, pieces may float in the air (truly creative). Switched on again, what has no " +
                 "support comes down.");
             _freeFuel = Config.Bind("3 - Player", "Free fuel", true,
-                "Fires, torches, braziers, candles, the hot tub, ovens, smelters, blast furnaces, the eitr refinery and shield " +
-                "generators stay full of fuel: no wood, coal or sap needed, nothing goes out.");
+                "Fires, torches, braziers, candles, the hot tub and shield generators stay full of fuel: no wood or sap needed, " +
+                "nothing goes out. Stations (smelters, kilns, ovens, the frost foundry) are not filled: they stand still here.");
             _stillStations = Config.Bind("3 - Player", "Stations stand still", true,
                 "Smelters, kilns (also the Frigid Kiln), the windmill, the spinning wheel, ovens, the frost foundry, cooking " +
                 "stations and fermenters make nothing and burn no fuel in the creative world: they are only for building. " +
@@ -150,6 +151,7 @@ namespace DigiCreative
             Mirror.InCreative = () => _active;
             Mirror.Bind(Config);
             Mirror.Patch(harmony);
+            PieceIndex.Patch(harmony);
             gameObject.AddComponent<Mirror>();
             IronCores.InCreative = () => _active;
             IronCores.Log = Logger;
@@ -360,22 +362,6 @@ namespace DigiCreative
             if (zdo.GetFloat(ZDOVars.s_fuel) < __instance.m_maxFuel) zdo.Set(ZDOVars.s_fuel, __instance.m_maxFuel);
         }
 
-        [HarmonyPatch(typeof(Smelter), "UpdateSmelter")]
-        [HarmonyPrefix]
-        private static void FullSmelter(Smelter __instance)
-        {
-            if (__instance.m_maxFuel <= 0 || !FreeFuel(__instance.m_nview)) return;
-            if (__instance.GetFuel() < __instance.m_maxFuel) __instance.SetFuel(__instance.m_maxFuel);
-        }
-
-        [HarmonyPatch(typeof(CookingStation), "UpdateCooking")]
-        [HarmonyPrefix]
-        private static void FullOven(CookingStation __instance)
-        {
-            if (!__instance.m_useFuel || __instance.m_maxFuel <= 0 || !FreeFuel(__instance.m_nview)) return;
-            if (__instance.GetFuel() < __instance.m_maxFuel) __instance.SetFuel(__instance.m_maxFuel);
-        }
-
         // No raids: a raid (picked by the game or started with the console's event command) starts through SetRandomEvent;
         // in the creative world none does. Stopping one still goes through.
         [HarmonyPatch(typeof(RandEventSystem), "SetRandomEvent")]
@@ -392,8 +378,8 @@ namespace DigiCreative
         }
 
         // Stations stand still: the time that passed for them is 0, so nothing cooks, smelts or ferments and no fuel burns.
-        // Last, after Crafting and Automation's speed and pause changes. (With free fuel the Frigid Kiln, which makes liquid
-        // frost from its fuel alone, made it without end.)
+        // Last, after Crafting and Automation's speed and pause changes. (The Frigid Kiln makes liquid frost from its fuel
+        // alone: with fuel in it, it made it without end.)
         private static bool Still => _active && _stillStations.Value;
 
         [HarmonyPatch(typeof(Smelter), "GetDeltaTime")]

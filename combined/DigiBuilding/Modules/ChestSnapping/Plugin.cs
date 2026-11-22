@@ -42,6 +42,9 @@
 //   upright piece, 0.9 m or more each way, with snap points around it) its back goes flush onto the face aimed at,
 //   facing out, by the 3 x 3 zones of that wall (a corner, flush with an edge and centred along it, or the middle; a
 //   wall with snap points every 2 m or more counts as tiles between them); aimed at a standing beam, like a sconce.
+//   Lying beams set into the wall (the dark Ashwood beams in Grausten walls), one or several on top of each other: aimed
+//   on or near that band, the stand's middle goes to the band's middle (aimed at the beam itself: the wall behind it).
+//   Aimed at the end of a Grausten arch (big or small): centred on its flat upright end face, facing out.
 // - The cartography table snaps like furniture (it is no crafting table for this).
 // - Each kind snaps flush to its own kind (when one is within reach), and onto floor tiles by where you aim: the tile
 //   under the crosshair (any flat piece with a rectangle of snap points on top: floors of any size; a floor with snap
@@ -73,7 +76,7 @@ namespace ChestSnapping
     {
         public const string Guid = "digi.valheim.chestsnapping";
         public const string Name = "Digi's Extra Snap Points";
-        public const string Version = "1.4.1";
+        public const string Version = "1.4.2";
 
         // The kinds of piece that get snap points (0: none). Our points' names start with the kind's word (the game shows
         // the name when Q / E picks one).
@@ -190,7 +193,8 @@ namespace ChestSnapping
                 "Item stands snap too. The standing one like the lanterns: onto floor tiles by the 3 x 3 zones, flush side by " +
                 "side, and on top of beams. The wall one onto walls by where you aim: into a corner of the wall, flush with an " +
                 "edge and centred along it, or in the middle, facing out (a wall with snap points every 2 m counts as tiles); " +
-                "onto a standing beam like a sconce.");
+                "centred on the dark beams set into a wall (one or several on top of each other) when aimed at or near them; " +
+                "centred on the end of a Grausten arch; onto a standing beam like a sconce.");
             _mapTable = Config.Bind("Snapping", "Cartography table", true,
                 "The cartography table snaps like furniture: flush side by side and against tables and benches, and onto floor tiles.");
             _ballistas = Config.Bind("Snapping", "Ballistas", true,
@@ -786,7 +790,8 @@ namespace ChestSnapping
             {
                 Transform mount = null;
                 var at = Vector3.zero;
-                if ((kind == Stand && OnWall(ghost, GhostPoints(__instance), out mount, out at)) || OnBeam(ghost, GhostPoints(__instance), kind, out mount, out at))
+                if ((kind == Stand && (OnArchEnd(ghost, GhostPoints(__instance), out mount, out at) || OnWall(ghost, GhostPoints(__instance), out mount, out at))) ||
+                    OnBeam(ghost, GhostPoints(__instance), kind, out mount, out at))
                 {
                     Target(at);
                     a = mount;
@@ -1003,7 +1008,15 @@ namespace ChestSnapping
             if (back == null || !StandShapes.TryGetValue(Utils.GetPrefabName(ghost.gameObject), out var shape)) return false;
             var root = _hitPiece.transform;
             var wall = WallOf(root);
-            if (wall == null) return false;
+            if (wall == null)
+            {
+                // Aimed at a lying beam set into (or against) a wall: as if the wall behind it was aimed at.
+                var behind = WallBehind(root);
+                if (behind == null) return false;
+                root = behind;
+                wall = WallOf(root);
+                if (wall == null) return false;
+            }
             var p = root.InverseTransformPoint(_hitPoint);
             int n = wall.Normal, u = wall.Across, v = wall.Up;
             var sign = p[n] >= wall.Box.center[n] ? 1f : -1f;
@@ -1025,6 +1038,142 @@ namespace ChestSnapping
             local[u] = Aligned(p[u], lowU, highU, halfW, 0f);
             local[v] = Aligned(p[v], lowV, highV, halfH, 0f);
             at = root.TransformPoint(local);
+            // Beams set into the wall beside the spot, aimed on or near them: centred on their band instead.
+            if (BandMiddle(root, normal, at, out var middle)) at.y = middle;
+            return true;
+        }
+
+        private static readonly Collider[] BandHits = new Collider[64];
+        private static int _pieceMask = -1;
+
+        private static int PieceMask => _pieceMask >= 0 ? _pieceMask : (_pieceMask = LayerMask.GetMask("piece", "piece_nonsolid"));
+
+        // The lowest and highest point of a piece's box in the world.
+        private static void Vertical(Transform root, Bounds box, out float bottom, out float top)
+        {
+            bottom = float.MaxValue;
+            top = float.MinValue;
+            for (var sx = -1; sx <= 1; sx += 2)
+                for (var sy = -1; sy <= 1; sy += 2)
+                    for (var sz = -1; sz <= 1; sz += 2)
+                    {
+                        var y = root.TransformPoint(box.center + Vector3.Scale(box.extents, new Vector3(sx, sy, sz))).y;
+                        bottom = Mathf.Min(bottom, y);
+                        top = Mathf.Max(top, y);
+                    }
+        }
+
+        // A wall item stand on a wall with lying beams set into it (the dark Ashwood beams in Grausten walls): the beams
+        // beside the spot (within 60 cm across and through, 90 cm up and down) that lie level along the wall make bands,
+        // beams on top of each other (touching, or within 5 cm) one band. Aimed on a band, or within 30 cm of it: its middle
+        // height, so the stand hangs centred on the beams (the wall's own zones put it a little off them).
+        private static bool BandMiddle(Transform wallRoot, Vector3 normal, Vector3 at, out float middle)
+        {
+            middle = 0f;
+            var count = Physics.OverlapBoxNonAlloc(at, new Vector3(0.6f, 0.9f, 0.6f), BandHits, Quaternion.LookRotation(normal), PieceMask);
+            var spans = new List<Vector2>();
+            for (var i = 0; i < count; i++)
+            {
+                var piece = BandHits[i] != null ? BandHits[i].GetComponentInParent<Piece>() : null;
+                if (piece == null || piece.transform == wallRoot) continue;
+                var root = piece.transform;
+                var beam = Bar(root);
+                if (beam == null || beam.Standing) continue;
+                var along = Direction(root, beam.Axis);
+                if (Mathf.Abs(along.y) > 0.2f || Mathf.Abs(Vector3.Dot(along, normal)) > 0.2f) continue;
+                Vertical(root, beam.Box, out var bottom, out var top);
+                var span = new Vector2(bottom, top);
+                if (!spans.Contains(span)) spans.Add(span);
+            }
+            if (spans.Count == 0) return false;
+            spans.Sort((a, b) => a.x.CompareTo(b.x));
+            var bands = new List<Vector2>();
+            foreach (var span in spans)
+            {
+                var last = bands.Count - 1;
+                if (last >= 0 && span.x <= bands[last].y + 0.05f) bands[last] = new Vector2(bands[last].x, Mathf.Max(bands[last].y, span.y));
+                else bands.Add(span);
+            }
+            var aim = _hitPoint.y;
+            var best = float.MaxValue;
+            foreach (var band in bands)
+            {
+                var off = aim < band.x ? band.x - aim : aim > band.y ? aim - band.y : 0f;
+                if (off > 0.3f || off >= best) continue;
+                best = off;
+                middle = (band.x + band.y) * 0.5f;
+            }
+            return best < float.MaxValue;
+        }
+
+        // A lying beam aimed at: the wall it is set into or lies against (the nearest wall its box, 10 cm bigger, touches).
+        private static Transform WallBehind(Transform beamRoot)
+        {
+            var beam = Bar(beamRoot);
+            if (beam == null || beam.Standing) return null;
+            var scale = beamRoot.lossyScale;
+            var half = new Vector3(beam.Box.extents.x * Mathf.Abs(scale.x), beam.Box.extents.y * Mathf.Abs(scale.y), beam.Box.extents.z * Mathf.Abs(scale.z)) +
+                       Vector3.one * 0.1f;
+            var centre = beamRoot.TransformPoint(beam.Box.center);
+            var count = Physics.OverlapBoxNonAlloc(centre, half, BandHits, beamRoot.rotation, PieceMask);
+            Transform best = null;
+            var bestDistance = float.MaxValue;
+            for (var i = 0; i < count; i++)
+            {
+                var piece = BandHits[i] != null ? BandHits[i].GetComponentInParent<Piece>() : null;
+                if (piece == null || piece.transform == beamRoot || WallOf(piece.transform) == null) continue;
+                var distance = (BandHits[i].ClosestPoint(_hitPoint) - _hitPoint).sqrMagnitude;
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                best = piece.transform;
+            }
+            return best;
+        }
+
+        // A wall item stand aimed at the end of a Grausten arch (the big and the small one): centred on the arch's flat
+        // upright end face, facing out from it. Their shapes (dumped 2026-11-21): the arch rises from its foot (its bottom
+        // snap point) and ends in a square face around its top snap point, 2 m out and 2 m up on the big one (a 1 x 1 m
+        // face), half that on the small one; the face looks away from the foot.
+        private static bool OnArchEnd(Transform ghost, List<Transform> points, out Transform back, out Vector3 at)
+        {
+            back = null;
+            at = Vector3.zero;
+            if (_hitFrame != Time.frameCount || _hitPiece == null) return false;
+            var root = _hitPiece.transform;
+            if (Utils.GetPrefabName(root.gameObject).IndexOf("pillar_arch", StringComparison.OrdinalIgnoreCase) < 0) return false;
+            foreach (var point in points)
+                if (point != null && point.name == Marks[Stand] + BackPlate)
+                {
+                    back = point;
+                    break;
+                }
+            if (back == null || !StandShapes.TryGetValue(Utils.GetPrefabName(ghost.gameObject), out var shape)) return false;
+            Transform top = null, foot = null;
+            for (var c = 0; c < root.childCount; c++)
+            {
+                var child = root.GetChild(c);
+                if (!child.CompareTag("snappoint") || child.name.IndexOf("center", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (child.name.IndexOf("top", StringComparison.OrdinalIgnoreCase) >= 0) top = child;
+                else if (child.name.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0) foot = child;
+            }
+            if (top == null || foot == null) return false;
+            var end = top.localPosition;
+            var outward = end - foot.localPosition;
+            var rise = Mathf.Abs(outward.y);
+            outward.y = 0f;
+            if (outward.sqrMagnitude < 0.01f || rise < 0.1f) return false;
+            var normal = root.TransformDirection(outward.normalized);
+            normal.y = 0f;
+            if (normal.sqrMagnitude < 0.01f) return false;
+            normal.Normalize();
+            var centre = root.TransformPoint(end);
+            var half = rise * 0.25f * Mathf.Abs(root.lossyScale.y); // the face: half as high as the arch rises, square
+            var offset = _hitPoint - centre;
+            var across = Vector3.Cross(Vector3.up, normal);
+            if (Mathf.Abs(Vector3.Dot(offset, normal)) > 0.15f || Mathf.Abs(offset.y) > half + 0.15f || Mathf.Abs(Vector3.Dot(offset, across)) > half + 0.15f)
+                return false;
+            ghost.rotation = Quaternion.LookRotation(normal) * Quaternion.Inverse(Quaternion.LookRotation(shape.Front));
+            at = centre + normal * (0.02f * Mathf.Abs(root.lossyScale.x)); // the stone stands 1.6 cm out of the snap point
             return true;
         }
 

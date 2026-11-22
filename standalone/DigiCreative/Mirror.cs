@@ -225,14 +225,8 @@ namespace DigiCreative
             return total;
         }
 
-        private static Piece FindTwin(string name, Vector3 at, Quaternion rot, Piece except)
-        {
-            foreach (var piece in Piece.s_allPieces)
-                if (piece != null && piece != except && (piece.transform.position - at).sqrMagnitude < 0.0025f && Utils.GetPrefabName(piece.gameObject) == name &&
-                    SameSpot(name, piece.transform.position, piece.transform.rotation, at, rot))
-                    return piece;
-            return null;
-        }
+        // The piece already standing where a mirror image goes (PieceIndex: the pieces there, not every loaded one).
+        private static Piece FindTwin(string name, Vector3 at, Quaternion rot, Piece except) => PieceIndex.At(name, at, rot, except);
 
         private static readonly Dictionary<string, List<Vector3>> SnapCache = new Dictionary<string, List<Vector3>>();
 

@@ -99,9 +99,50 @@ namespace AutoMapPins
             }
         }
 
-        // Hidden by its filter button, or too far from you for its kind's "Nearby only" (then also not merged or counted).
+        // Hidden by its filter button, too far from you for its kind's "Nearby only", or in the fog (then also not merged
+        // or counted).
         internal static bool Filtered(Record record) =>
-            (Plugin.HiddenKinds & (1 << record.Filter)) != 0 || record.NearOnly && Utils.DistanceXZ(record.Pos, _playerPos) > Plugin.NearRadius;
+            (Plugin.HiddenKinds & (1 << record.Filter)) != 0 || record.NearOnly && Utils.DistanceXZ(record.Pos, _playerPos) > Plugin.NearRadius ||
+            Plugin.HideInFog && InFog(record.Pos);
+
+        // "Hide pins in the fog": a pin shows only where your map is uncovered - explored by you, or by others (read at a
+        // cartography table) while the map shows shared exploration. The game hides other players' pins the same way
+        // (UpdatePins: m_ownerID != 0 and m_sharedMapDataFade 0), but a table pin this mod takes over becomes its own pin
+        // and lost that: with the shared map switched off, pins stood in the fog of places you never saw.
+        // (Minimap.IsExplored counts the shared map always, so the two maps - BitArrays - are read here.)
+        private static readonly AccessTools.FieldRef<Minimap, System.Collections.BitArray> OwnMap = AccessTools.FieldRefAccess<Minimap, System.Collections.BitArray>("m_explored");
+        private static readonly AccessTools.FieldRef<Minimap, System.Collections.BitArray> SharedMap = AccessTools.FieldRefAccess<Minimap, System.Collections.BitArray>("m_exploredOthers");
+        private static readonly AccessTools.FieldRef<Minimap, float> SharedFade = AccessTools.FieldRefAccess<Minimap, float>("m_sharedMapDataFade");
+        private static bool _sharedShown = true;
+
+        private static bool InFog(Vector3 pos)
+        {
+            var map = Minimap.instance;
+            if (map == null) return false;
+            var own = OwnMap(map);
+            var size = map.m_textureSize;
+            if (own == null || own.Count < size * size) return false;
+            var half = size / 2;
+            var px = Utils.RoundToInt(pos.x / map.m_pixelSize + half);
+            var py = Utils.RoundToInt(pos.z / map.m_pixelSize + half);
+            if (px < 0 || px >= size || py < 0 || py >= size) return true;
+            var i = py * size + px;
+            if (own[i]) return false;
+            var shared = SharedMap(map);
+            return !(SharedFade(map) > 0f && shared != null && shared.Count > i && shared[i]);
+        }
+
+        // The shared map switched on or off on the large map: the pins in places only others explored show or hide.
+        internal static void WatchFog()
+        {
+            var map = Minimap.instance;
+            if (map == null || !Plugin.HideInFog) return;
+            var shown = SharedFade(map) > 0f;
+            if (shown == _sharedShown) return;
+            _sharedShown = shown;
+            Dirty = true;
+            MapPins.Redraw();
+        }
 
         // "Nearby only" goes by where you were when the pins were last placed: once you moved a tenth of the radius (at
         // least 10 m), the pins show again by distance. The game only places its pins when something changed, not as

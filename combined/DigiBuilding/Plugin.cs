@@ -20,7 +20,7 @@ namespace DigiBuilding
     {
         public const string Guid = "digi.valheim.building";
         public const string Name = "Digi's Building Tweaks";
-        public const string Version = "1.0.35";
+        public const string Version = "1.0.36";
 
         protected override ModuleInfo[] Modules { get; } =
         {

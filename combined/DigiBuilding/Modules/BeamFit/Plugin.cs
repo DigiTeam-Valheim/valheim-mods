@@ -5,7 +5,10 @@
 // a wall (on its face, free, or crossing it) is left as it is.
 // The beam's three looks (new, worn, broken: the game switches them with its health) are all adjusted, so it stays fixed
 // when damaged. Which beams and walls: by name part (settings), Ashwood beams and poles in Grausten walls by default.
-// Lag: one physics box test per beam when it (or a wall next to it) loads, is built or is removed.
+// Lag: one physics box test per beam when it (or a wall next to it) loads, is built or is removed. What a piece is
+// (beam, wall) is worked out once when it loads (Unity's .name makes a new string each call); a wall that came or went
+// finds its beams in one pass over the loaded beams with the walls in 4 m cells. It searched every loaded piece once
+// per wall: a pasted schematic or a big base loading (thousands of walls at once) froze the game 1-2 s (2026-11-21).
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,7 +22,7 @@ namespace BeamFit
     {
         public const string Guid = "digi.valheim.beamfit";
         public const string Name = "Digi's Beam Fit";
-        public const string Version = "1.1.1";
+        public const string Version = "1.1.2";
 
         private sealed class Original
         {
@@ -39,7 +42,14 @@ namespace BeamFit
         private static readonly Dictionary<string, Bounds> WallShapes = new Dictionary<string, Bounds>();
         private static readonly Dictionary<string, float> Bodies = new Dictionary<string, float>(); // beam type/axis -> wood thickness
         private static readonly Collider[] Hits = new Collider[64];
-        private static readonly List<Piece> Near = new List<Piece>();
+        // What each loaded piece is (bit 1 beam, bit 2 wall), the loaded beams, the changed walls by 4 m cell, the beams
+        // fitted this frame.
+        private static readonly Dictionary<Piece, byte> Kinds = new Dictionary<Piece, byte>();
+        private static readonly HashSet<Piece> Beams = new HashSet<Piece>();
+        private static readonly Dictionary<long, List<Vector3>> SpotCells = new Dictionary<long, List<Vector3>>();
+        private static readonly List<Piece> Due = new List<Piece>();
+        private const float WallReach = 4f; // a wall within this of a beam's middle has the beam checked again
+        private static int _ghostLayer = -1;
         private static int _mask;
 
         private void Awake()
@@ -67,6 +77,8 @@ namespace BeamFit
             Changed.Clear();
             Pending.Clear();
             WallsChanged.Clear();
+            Kinds.Clear();
+            Beams.Clear();
         }
 
         private static void ReadNames()
@@ -75,14 +87,20 @@ namespace BeamFit
             _beamNames = Split(_beams.Value);
             _wallNames = Split(_walls.Value);
             WallShapes.Clear();
+            Kinds.Clear();
         }
 
         private static void Rescan()
         {
             ReadNames();
             foreach (var beam in Fitted.Keys.ToList()) Restore(beam);
+            Beams.Clear();
             foreach (var piece in UnityEngine.Object.FindObjectsByType<Piece>(FindObjectsSortMode.None))
-                if (IsBeam(piece)) Pending[piece] = 0f;
+                if (IsBeam(piece))
+                {
+                    Beams.Add(piece);
+                    Pending[piece] = 0f;
+                }
         }
 
         private static bool Matches(Piece piece, string[] names)
@@ -94,8 +112,17 @@ namespace BeamFit
             return false;
         }
 
-        private static bool IsBeam(Piece piece) => Matches(piece, _beamNames);
-        private static bool IsWall(Piece piece) => Matches(piece, _wallNames);
+        private static byte KindOf(Piece piece)
+        {
+            if (piece == null) return 0;
+            if (Kinds.TryGetValue(piece, out var kind)) return kind;
+            kind = (byte)((Matches(piece, _beamNames) ? 1 : 0) | (Matches(piece, _wallNames) ? 2 : 0));
+            Kinds[piece] = kind;
+            return kind;
+        }
+
+        private static bool IsBeam(Piece piece) => (KindOf(piece) & 1) != 0;
+        private static bool IsWall(Piece piece) => (KindOf(piece) & 2) != 0;
 
         // --- When to look -------------------------------------------------------------------------------------------
 
@@ -105,7 +132,11 @@ namespace BeamFit
         [HarmonyPostfix]
         private static void Loaded(Piece __instance)
         {
-            if (IsBeam(__instance)) Pending[__instance] = Time.time + 0.3f;
+            if (IsBeam(__instance))
+            {
+                Beams.Add(__instance);
+                Pending[__instance] = Time.time + 0.3f;
+            }
             else if (IsWall(__instance)) WallsChanged.Add(__instance.transform.position);
         }
 
@@ -115,7 +146,9 @@ namespace BeamFit
         {
             Pending.Remove(__instance);
             Fitted.Remove(__instance);
+            Beams.Remove(__instance);
             if (IsWall(__instance)) WallsChanged.Add(__instance.transform.position);
+            Kinds.Remove(__instance);
         }
 
         private float _wallsAt;
@@ -127,32 +160,70 @@ namespace BeamFit
             if (_wallsAt > 0f && now >= _wallsAt)
             {
                 _wallsAt = 0f;
-                foreach (var spot in WallsChanged)
-                {
-                    Near.Clear();
-                    Piece.GetAllPiecesInRadius(spot, 4f, Near);
-                    foreach (var piece in Near)
-                        if (IsBeam(piece)) Pending[piece] = 0f;
-                }
+                BeamsNearChangedWalls();
                 WallsChanged.Clear();
             }
             if (Pending.Count == 0) return;
-            var done = 0;
-            foreach (var pair in Pending.ToList())
+            // At most 40 a frame: a big base loading is spread over frames.
+            Due.Clear();
+            foreach (var pair in Pending)
             {
                 if (pair.Value > now) continue;
-                Pending.Remove(pair.Key);
-                if (pair.Key == null) continue;
+                Due.Add(pair.Key);
+                if (Due.Count >= 40) break;
+            }
+            foreach (var beam in Due)
+            {
+                Pending.Remove(beam);
+                if (beam == null) continue;
                 try
                 {
-                    Fit(pair.Key);
+                    Fit(beam);
                 }
                 catch (Exception e)
                 {
-                    _log?.LogWarning($"Could not fit {pair.Key.name}: {e.Message}");
+                    _log?.LogWarning($"Could not fit {beam.name}: {e.Message}");
                 }
-                if (++done >= 40) break; // a big base loading: spread over frames
             }
+        }
+
+        private static int Grid(float v) => Mathf.FloorToInt(v / WallReach);
+
+        private static long Cell(int x, int y, int z) => ((long)(x & 0x1FFFFF) << 42) | ((long)(y & 0x1FFFFF) << 21) | (long)(z & 0x1FFFFF);
+
+        // The beams within 4 m of a wall that came or went (as the game's GetAllPiecesInRadius around each wall, ghosts
+        // left out): the walls' spots go into 4 m cells, then each loaded beam looks in its own and the 26 cells around.
+        private static void BeamsNearChangedWalls()
+        {
+            SpotCells.Clear();
+            foreach (var spot in WallsChanged)
+            {
+                var key = Cell(Grid(spot.x), Grid(spot.y), Grid(spot.z));
+                if (!SpotCells.TryGetValue(key, out var list)) SpotCells[key] = list = new List<Vector3>();
+                list.Add(spot);
+            }
+            if (_ghostLayer < 0) _ghostLayer = LayerMask.NameToLayer("ghost");
+            Beams.RemoveWhere(b => b == null);
+            foreach (var beam in Beams)
+            {
+                if (beam.gameObject.layer == _ghostLayer) continue;
+                var at = beam.transform.position;
+                if (WallNear(at)) Pending[beam] = 0f;
+            }
+        }
+
+        private static bool WallNear(Vector3 at)
+        {
+            int gx = Grid(at.x), gy = Grid(at.y), gz = Grid(at.z);
+            for (var dx = -1; dx <= 1; dx++)
+                for (var dy = -1; dy <= 1; dy++)
+                    for (var dz = -1; dz <= 1; dz++)
+                    {
+                        if (!SpotCells.TryGetValue(Cell(gx + dx, gy + dy, gz + dz), out var spots)) continue;
+                        foreach (var spot in spots)
+                            if ((spot - at).sqrMagnitude < WallReach * WallReach) return true;
+                    }
+            return false;
         }
 
         // --- Fitting -------------------------------------------------------------------------------------------------

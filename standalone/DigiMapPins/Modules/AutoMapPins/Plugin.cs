@@ -75,6 +75,8 @@ namespace AutoMapPins
         private static readonly Group[] NearGroups = { Group.Deposits, Group.Plants, Group.Chests, Group.Spawners, Group.Builds };
         private static readonly ConfigEntry<bool>[] NearOnly = new ConfigEntry<bool>[GroupTitles.Length];
         private static ConfigEntry<float> _nearRadius;
+        private static ConfigEntry<bool> _hideInFog;
+        internal static bool HideInFog => _hideInFog.Value;
         private static ConfigEntry<string> _portalIcon;
         private static ConfigEntry<float> _radius, _size, _faded, _portalSize, _traderSize, _nameSize;
         private static ConfigEntry<IconStyle> _style;
@@ -227,6 +229,10 @@ namespace AutoMapPins
             _nearRadius = Config.Bind(general, "Nearby only - radius (m)", 300f, new ConfigDescription(
                 "How far from you the pins of the kinds set to \"Nearby only\" still show, in meters.",
                 new AcceptableValueRange<float>(50f, 5000f)));
+            _hideInFog = Config.Bind(general, "Hide pins in the fog", true,
+                "Pins of this mod show only where your map is uncovered: explored by you, or by others (a cartography table) " +
+                "while the map shows their exploration (the shared map button), like the game does with other players' pins. " +
+                "Off: also in the fog.");
             _crossOff = Config.Bind(general, "Cross off looted dungeons", true,
                 "Cross off a dungeon's pin (Burial Chambers, crypts, caves, ...) once you are inside and no chest in it has loot left.");
             _faded = Config.Bind(general, "Faded pin opacity", 0.35f, new ConfigDescription(
@@ -291,6 +297,7 @@ namespace AutoMapPins
             if (Waiting) return;
             Tracker.Tick(Time.unscaledDeltaTime); // real time: also while the game is paused (F1 open)
             MapView.FollowPlayer();
+            MapView.WatchFog();
             MapView.Update();
         }
 
@@ -338,6 +345,7 @@ namespace AutoMapPins
             foreach (var entry in Levels) Hook(entry, OnLookChanged, on);
             foreach (var group in NearGroups) Hook(NearOnly[(int)group], OnLookChanged, on);
             Hook(_nearRadius, OnLookChanged, on);
+            Hook(_hideInFog, OnLookChanged, on);
             Hook(_portalMinimap, OnLookChanged, on);
             Hook(_size, OnLookChanged, on);
             Hook(_faded, OnLookChanged, on);

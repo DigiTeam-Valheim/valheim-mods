@@ -1,6 +1,7 @@
 // Iron inside timber (a switch, off by default): a timber beam or pole placed in the creative world gets Wood Iron pieces
 // inside it on the same snap points, so it holds like iron while it looks like timber. The 2 m pieces and the 26, 45
-// and 67 degree beams (also the decorated ones) get their Wood Iron twin; the 4 m beam and pole two 2 m iron pieces end
+// and 67 degree beams get their Wood Iron twin (the decorated ones only with their own switch, off: the iron shows
+// through their holes); the 4 m beam and pole two 2 m iron pieces end
 // to end (there is no 4 m iron piece). Timber walls and roof crosses have no iron twin and get none.
 // Where the iron goes: Wood Swap's table (DigiShared WoodShapes) lines its snap points up with the timber's; for a 4 m
 // piece first two 2 m timber pieces along its two halves, then their iron.
@@ -19,7 +20,7 @@ namespace DigiCreative
 {
     internal static class IronCores
     {
-        internal static ConfigEntry<bool> On;
+        internal static ConfigEntry<bool> On, Decorated;
         internal static Func<bool> InCreative = () => false;
         internal static ManualLogSource Log;
         internal static bool Paused; // a schematic being pasted: it brings its own iron
@@ -48,9 +49,14 @@ namespace DigiCreative
         {
             On = config.Bind("3 - Player", "Iron inside timber", false,
                 "A timber beam or pole you place gets Wood Iron pieces inside it on the same snap points, so it holds like iron " +
-                "while it looks like timber: the 2 m pieces and the 26, 45 and 67 degree beams (also the decorated ones) their " +
+                "while it looks like timber: the 2 m pieces and the 26, 45 and 67 degree beams their " +
                 "Wood Iron twin, the 4 m beam and pole two 2 m iron pieces end to end. Removing the timber piece takes its iron " +
-                "along. Timber walls and roof crosses have no iron twin.");
+                "along. Timber walls and roof crosses have no iron twin. Decorated timber has its own switch below.");
+            Decorated = config.Bind("3 - Player", "Iron inside decorated timber", false,
+                "With Iron inside timber on: decorated timber beams get their Wood Iron twin too. Off by default, the iron " +
+                "shows through the holes of the decorated beams.");
+            // The iron of each kind is worked out once (Cores): the decorated beams' again when this switch changes.
+            Decorated.SettingChanged += (_, __) => Cores.Clear();
         }
 
         internal static void Patch(Harmony harmony)
@@ -115,14 +121,7 @@ namespace DigiCreative
             }
         }
 
-        private static Piece Find(string name, Vector3 at, Quaternion rot, Piece except)
-        {
-            foreach (var piece in Piece.s_allPieces)
-                if (piece != null && piece != except && (piece.transform.position - at).sqrMagnitude < 0.0025f &&
-                    Utils.GetPrefabName(piece.gameObject) == name && Mirror.SameSpot(name, piece.transform.position, piece.transform.rotation, at, rot))
-                    return piece;
-            return null;
-        }
+        private static Piece Find(string name, Vector3 at, Quaternion rot, Piece except) => PieceIndex.At(name, at, rot, except);
 
         private static List<Core> CoresOf(string name)
         {
@@ -151,7 +150,8 @@ namespace DigiCreative
         private static void AddIron(List<Core> list, string timber, Vector3 pos, Quaternion rot)
         {
             var member = WoodShapes.MemberOf(timber);
-            if (member == null || (member.Type != Timber && member.Type != DecoratedTimber) || member.Row[WoodIron].Length == 0) return;
+            if (member == null || member.Row[WoodIron].Length == 0) return;
+            if (member.Type != Timber && (member.Type != DecoratedTimber || Decorated == null || !Decorated.Value)) return;
             var fit = WoodShapes.FitFor(timber, member, WoodIron);
             if (fit == null) return;
             list.Add(new Core { Piece = fit.Piece, Pos = pos + rot * fit.Move, Rot = rot * fit.Turn });
