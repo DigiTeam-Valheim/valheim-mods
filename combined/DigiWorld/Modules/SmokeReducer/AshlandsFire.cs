@@ -4,11 +4,13 @@
 // - Flames: scales how many flame particles and sparks each fire emits.
 // - Smoke: scales the burn effect's puffs, and makes the smoke clouds the fire sends up fainter. Those clouds are
 //   physical (fires choke on their own smoke and can go out), so they keep coming as before; only how much you see of
-//   them changes (the game draws each one with a transparency it asks the cloud for).
+//   them changes. Since Valheim 1.0.30 a cloud fades itself: Smoke.CustomUpdate writes its transparency into the
+//   cloud's own material block while it fades in (its first second) and out (before, the game asked it with GetAlpha,
+//   which is gone); a fire's cloud gets that transparency scaled right after.
 // Visual only: the fire burns, spreads and hurts exactly as before.
 // Lag: a fire's emitters are scaled once when it appears; the burn effect's template is scaled once, so every new
-// puff is lighter at no cost; a fire's smoke cloud is marked once when it spawns, and its transparency is one lookup
-// per frame. A slider change re-applies to the fires that are loaded.
+// puff is lighter at no cost; a fire's smoke cloud is marked once when it spawns; its transparency is set again only
+// when the game changed it (fading in or out). A slider change re-applies to the fires that are loaded.
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using BepInEx.Configuration;
@@ -104,11 +106,22 @@ namespace SmokeReducer
             if (_spawningFireSmoke) FireSmoke.Add(__instance, Mark);
         }
 
-        [HarmonyPatch(typeof(Smoke), nameof(Smoke.GetAlpha))]
+        // After the game set the cloud's transparency (1.0.30: in its own material block): a fire's cloud fainter. Only
+        // written when it differs, so a cloud at full strength costs one lookup and a compare per update.
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.CustomUpdate))]
         [HarmonyPostfix]
-        private static void Fainter(Smoke __instance, ref float __result)
+        private static void Fainter(Smoke __instance)
         {
-            if (_smoke.Value < 100 && FireSmoke.TryGetValue(__instance, out _)) __result *= _smoke.Value / 100f;
+            if (_smoke.Value >= 100 || !FireSmoke.TryGetValue(__instance, out _)) return;
+            var block = __instance.m_propertyBlock;
+            var renderer = __instance.m_mr;
+            if (block == null || renderer == null) return;
+            var color = block.GetColor(Smoke.m_colorProp);
+            var wanted = __instance.m_alpha * _smoke.Value / 100f;
+            if (Mathf.Abs(color.a - wanted) < 0.002f) return;
+            color.a = wanted;
+            block.SetColor(Smoke.m_colorProp, color);
+            renderer.SetPropertyBlock(block);
         }
 
         private static void OnChanged(object sender, System.EventArgs e)

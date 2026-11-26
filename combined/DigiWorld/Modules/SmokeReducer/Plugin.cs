@@ -18,7 +18,7 @@ namespace SmokeReducer
     {
         public const string Guid = "digi.valheim.smokereducer";
         public const string Name = "Digi's Smoke Reducer";
-        public const string Version = "1.2.0";
+        public const string Version = "1.2.1";
 
         private static ConfigEntry<float> _intervalMultiplier;
         private static ConfigEntry<int> _maxSmoke;
