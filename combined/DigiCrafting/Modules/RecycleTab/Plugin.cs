@@ -206,7 +206,13 @@ namespace RecycleTab
             if (!_active) return;
             var player = Player.m_localPlayer;
             var inv = player.GetInventory();
-            foreach (var pair in __instance.m_availableRecipes) Destroy(pair.InterfaceElement);
+            // Off before they go: destroyed only at the end of the frame, they were switched on and drawn with the window.
+            foreach (var pair in __instance.m_availableRecipes)
+            {
+                if (pair.InterfaceElement == null) continue;
+                pair.InterfaceElement.SetActive(false);
+                Destroy(pair.InterfaceElement);
+            }
             __instance.m_availableRecipes.Clear();
 
             Equipped.Clear();

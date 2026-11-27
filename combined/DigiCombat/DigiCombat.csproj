@@ -34,7 +34,7 @@
     <Reference Include="Unity.TextMeshPro"><HintPath>$(ValheimDir)\valheim_Data\Managed\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule"><HintPath>$(ValheimDir)\valheim_Data\Managed\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.ParticleSystemModule"><HintPath>$(ValheimDir)\valheim_Data\Managed\UnityEngine.ParticleSystemModule.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="Jotunn"><HintPath>$(ValheimDir)\BepInEx\plugins\ValheimModding-Jotunn-2.30.2\plugins\Jotunn.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jotunn"><HintPath>$(ValheimDir)\BepInEx\plugins\ValheimModding-Jotunn-2.30.3\plugins\Jotunn.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="ValheimLegends"><HintPath>$(ValheimDir)\BepInEx\plugins\momos3939-ValheimLegends-0.7.13\plugins\ValheimLegends.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 

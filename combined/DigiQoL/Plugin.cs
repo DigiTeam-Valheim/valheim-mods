@@ -19,7 +19,7 @@ namespace DigiQoL
     {
         public const string Guid = "digi.valheim.qol";
         public const string Name = "Digi's Inventory and QoL";
-        public const string Version = "1.0.37";
+        public const string Version = "1.0.39";
 
         protected override ModuleInfo[] Modules { get; } =
         {
@@ -34,9 +34,10 @@ namespace DigiQoL
             new ModuleInfo(typeof(global::CameraClipFix.Plugin), "Camera Clip Fix", "digi.valheim.cameraclipfix", "In third person the camera no longer goes partly into a floor above you, a roof or a wall: it comes closer instead.", null, true),
             new ModuleInfo(typeof(global::ChestFillOrder.Plugin), "Chest Fill Order", "digi.valheim.chestfillorder", "What you put into a chest, cart, ship or backpack goes into the first free slot from the top left, instead of the game's bottom row first.", null, true),
             new ModuleInfo(typeof(global::ChestSorter.Plugin), "Chest Sorter", "digi.valheim.chestsorter", "Chests sort themselves when you open them and after Store Nearby: grouped by kind, A-Z, from the top left, stacks merged.", null, true),
+            new ModuleInfo(typeof(global::ChestWindowFit.Plugin), "Chest Window Fit", "digi.valheim.chestwindowfit", "Chests with more rows than the chest window shows (the Grausten chest) open in a window tall enough for all of them: no scroll bar.", null, true),
             new ModuleInfo(typeof(global::ItemPickupFix.Plugin), "Item Pickup Fix", "digi.valheim.itempickupfix", "Items from other mods that cannot be picked up and fall through the floor (a collider without a shape) get a working one, and Equipment Slots' quick slot key V no longer switches the game's auto pickup off too.", null, true),
             new ModuleInfo(typeof(global::SellToHaldor.Plugin), "Sell To Haldor", "digi.valheim.selltohaldor", "Haldor also buys your food and feasts (a box in his window) and every kind of hide and leather.", null, true),
-            new ModuleInfo(typeof(global::LighterInventory.Plugin), "Lighter Inventory", "digi.valheim.lighterinventory", "An open inventory costs less: items and the recipe panel are redrawn when something changes instead of every frame, also Equipment Slots' panel.", null, true),
+            new ModuleInfo(typeof(global::LighterInventory.Plugin), "Lighter Inventory", "digi.valheim.lighterinventory", "An open inventory costs less: items and the recipe panel are redrawn when something changes instead of every frame, also Equipment Slots' panel; opening it no longer rebuilds an unchanged recipe list and only draws the recipes in view.", null, true),
             new ModuleInfo(typeof(global::SkillXp.Plugin), "Skill XP", "digi.valheim.skillxp", "The Skills window shows each skill's XP, e.g. 24  12/63.", null, true),
             new ModuleInfo(typeof(global::AutoCloseDoors.Plugin), "Auto Close Doors", "digi.valheim.autoclosedoors", "Doors you built close by themselves 15 seconds after opening, never on someone standing in the doorway.", null, true),
             new ModuleInfo(typeof(global::CompactStatusEffects.Plugin), "Compact Status Effects", "digi.valheim.compactstatuseffects", "The effect icons top right take less room: smaller icons, no names under them, and the effects that never change (what you wear, always-on forsaken powers) left out.", null, true),

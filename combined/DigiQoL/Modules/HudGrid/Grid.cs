@@ -276,6 +276,7 @@ namespace HudGrid
             p.Slot.type = Image.Type.Sliced;
             p.Slot.color = new Color(0f, 0f, 0f, 0.55f); // as dark as the quiver's slots beside it
             p.Slot.transform.SetAsFirstSibling();
+            p.Slot.gameObject.SetActive(true);
             if (p.TheirKey != null) p.Key = Label(root, "DigiHudGridKey", "binding", TextAlignmentOptions.TopLeft);
             if (p.TheirCount != null) p.Count = Label(root, "DigiHudGridCount", "amount", TextAlignmentOptions.Bottom);
         }
@@ -295,12 +296,16 @@ namespace HudGrid
             t.overflowMode = TextOverflowModes.Overflow;
             t.alignment = align;
             t.raycastTarget = false;
+            t.gameObject.SetActive(true);
             return t;
         }
 
+        // Made switched off (the caller switches it on when it is set up): a text must have its font before it wakes, or
+        // it loads a default font the game does not have and logs a warning.
         private static T NewPart<T>(RectTransform parent, string name) where T : Component
         {
             var go = new GameObject(name, typeof(RectTransform));
+            go.SetActive(false);
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);

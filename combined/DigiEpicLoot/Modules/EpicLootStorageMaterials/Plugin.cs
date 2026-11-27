@@ -88,7 +88,7 @@ namespace EpicLootStorageMaterials
             foreach (var chest in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None)) Containers.Add(chest);
             harmony.PatchAll(typeof(SacrificePatch));
             harmony.PatchAll(typeof(FeatureValuePatch));
-            harmony.PatchAll(typeof(RemovedPatch));
+            PatchPayment(harmony);
             harmony.PatchAll(typeof(ChestToggleUi));
             harmony.PatchAll(typeof(SacrificeListPatch));
             PatchIdentify(harmony);
@@ -210,6 +210,8 @@ namespace EpicLootStorageMaterials
             {
                 CheckSelection(__instance, "Sacrifice");
                 Sacrificed.Clear();
+                _handedToPay = false;
+                _takingSacrifice = true; // chest shardstones and gear stay offered while it is paid for (0.16)
                 if (!_perItemDouble.Value || ProductsMethod == null || GiveMethod == null) return;
                 var table = EpicLoot_UnityLib.EnchantingTableUI.instance?.SourceTable;
                 if (table == null) return;
@@ -220,8 +222,11 @@ namespace EpicLootStorageMaterials
 
             private static void Postfix(EpicLoot_UnityLib.SacrificeUI __instance)
             {
+                if (!_handedToPay) _takingSacrifice = false; // nothing to pay (0.16), or taken right away (0.15)
+                _handedToPay = false;
                 if (!_sacrificing) return;
                 _sacrificing = false;
+                if (_payThen) return; // 0.16: the doubles come with the payment's "paid" answer (PayThenPrefix)
                 var extra = new List<Tuple<ItemDrop.ItemData, int>>();
                 foreach (var entry in Sacrificed)
                 {
@@ -241,6 +246,7 @@ namespace EpicLootStorageMaterials
             private static Exception Finalizer(Exception __exception)
             {
                 _sacrificing = false;
+                if (__exception != null) _takingSacrifice = _handedToPay = false;
                 return __exception;
             }
         }
@@ -340,14 +346,117 @@ namespace EpicLootStorageMaterials
             }
         }
 
-        // Remember what was actually taken for the sacrifice (from the inventory or a chest).
-        [HarmonyPatch(typeof(EpicLoot_UnityLib.InventoryManagement), nameof(EpicLoot_UnityLib.InventoryManagement.RemoveExactItem))]
-        private static class RemovedPatch
+        // Epic Loot 0.15: it takes each sacrificed item with InventoryManagement.RemoveExactItem right in SacrificeItems;
+        // what was really taken (from the inventory or a chest) is remembered here for the per-item double.
+        private static void Removed(ItemDrop.ItemData item, int __result)
         {
-            private static void Postfix(ItemDrop.ItemData item, int __result)
+            if (_sacrificing && item != null && __result > 0) Sacrificed.Add(Tuple.Create(item, __result));
+        }
+
+        // Epic Loot 0.16 pays for a sacrifice or an identify in one go: the panel's PayThen hands a Payment (the exact
+        // items) to InventoryManagement.Pay, which first checks that every item is still held - chest items too, through
+        // the providers' item lists (API.AppendProviderItems: ChestItems here) - and answers later when the table's own
+        // Storage has to confirm its part. So the chest items stay offered (_takingSacrifice, _identifyPaying) until
+        // PayThen answers, and the per-item double is given in its "paid" answer, from the payment's own items.
+        private static bool _payThen, _handedToPay, _takingSacrifice, _identifyPaying;
+        private static readonly FieldInfo PaymentLines = AccessTools.Field(typeof(EpicLoot_UnityLib.InventoryManagement.Payment), "Lines");
+
+        private static void PatchPayment(Harmony harmony)
+        {
+            var remove = AccessTools.Method(typeof(EpicLoot_UnityLib.InventoryManagement), "RemoveExactItem");
+            if (remove != null) harmony.Patch(remove, postfix: new HarmonyMethod(typeof(Plugin), nameof(Removed)));
+            var payThen = AccessTools.Method(typeof(EpicLoot_UnityLib.EnchantingTableUIPanelBase), "PayThen");
+            if (payThen != null)
             {
-                if (_sacrificing && item != null && __result > 0) Sacrificed.Add(Tuple.Create(item, __result));
+                harmony.Patch(payThen, prefix: new HarmonyMethod(typeof(Plugin), nameof(PayThenPrefix)));
+                _payThen = true;
             }
+            var identify = AccessTools.Method(typeof(EpicLoot_UnityLib.SacrificeUI), "IdentifyItems");
+            if (identify != null && payThen != null)
+                harmony.Patch(identify, prefix: new HarmonyMethod(typeof(Plugin), nameof(IdentifyPayStart)),
+                    finalizer: new HarmonyMethod(typeof(Plugin), nameof(IdentifyPayEnd)));
+            if (remove == null && payThen == null) _log?.LogWarning("Epic Loot's sacrifice payment was not found: no per-item double, chest items may not be taken.");
+        }
+
+        private static void IdentifyPayStart()
+        {
+            _handedToPay = false;
+            _identifyPaying = true;
+        }
+
+        private static Exception IdentifyPayEnd(Exception __exception)
+        {
+            if (__exception != null || !_handedToPay) _identifyPaying = false;
+            _handedToPay = false;
+            return __exception;
+        }
+
+        private static void PayThenPrefix(object __instance, EpicLoot_UnityLib.InventoryManagement.Payment payment,
+            ref Action<EpicLoot_UnityLib.InventoryManagement.Receipt> onPaid, ref Action onFailed)
+        {
+            var sacrifice = _takingSacrifice;
+            var identify = _identifyPaying;
+            if (!sacrifice && !identify) return;
+            _handedToPay = true;
+            var items = sacrifice && _sacrificing ? ExactItems(payment) : null;
+            var chance = _doubleChance;
+            var panel = __instance as EpicLoot_UnityLib.SacrificeUI;
+            var paid = onPaid;
+            var failed = onFailed;
+            void Done()
+            {
+                if (sacrifice) _takingSacrifice = false;
+                if (identify) _identifyPaying = false;
+            }
+            onPaid = receipt =>
+            {
+                try
+                {
+                    paid?.Invoke(receipt);
+                    if (items != null && items.Count > 0) GiveDoubles(panel, items, chance);
+                }
+                finally { Done(); }
+            };
+            onFailed = () =>
+            {
+                try { failed?.Invoke(); }
+                finally { Done(); }
+            };
+        }
+
+        // The exact items of a payment (Payment.Lines is Epic Loot's own: read by reflection).
+        private static List<Tuple<ItemDrop.ItemData, int>> ExactItems(EpicLoot_UnityLib.InventoryManagement.Payment payment)
+        {
+            var result = new List<Tuple<ItemDrop.ItemData, int>>();
+            if (payment == null || !(PaymentLines?.GetValue(payment) is System.Collections.IEnumerable lines)) return result;
+            foreach (var line in lines)
+            {
+                var t = Traverse.Create(line);
+                var item = t.Field("Exact").GetValue<ItemDrop.ItemData>();
+                var amount = t.Field("Amount").GetValue<int>();
+                if (item != null && amount > 0) result.Add(Tuple.Create(item, amount));
+            }
+            return result;
+        }
+
+        // The per-item double: each sacrificed item rolls the table's chance on its own; the extras come on top.
+        private static void GiveDoubles(EpicLoot_UnityLib.SacrificeUI panel, List<Tuple<ItemDrop.ItemData, int>> items, float chance)
+        {
+            if (ProductsMethod == null || GiveMethod == null || chance <= 0f) return;
+            var extra = new List<Tuple<ItemDrop.ItemData, int>>();
+            foreach (var entry in items)
+            {
+                var doubled = 0;
+                for (var i = 0; i < entry.Item2; i++)
+                    if (UnityEngine.Random.value < chance) doubled++;
+                if (doubled > 0) extra.Add(Tuple.Create(entry.Item1, doubled));
+            }
+            if (extra.Count == 0) return;
+            var products = ProductsMethod.Invoke(null, new object[] { extra });
+            EpicLoot_UnityLib.EnchantingTableUI.instance?.PlayEnchantBonusSFX();
+            if (panel != null && panel.BonusPanel != null) panel.BonusPanel.Show();
+            GiveMethod.Invoke(null, new[] { products });
+            if (panel != null) RefreshSacrifice?.Invoke(panel, null);
         }
 
         // "Include shardstones" and "Include trophies" checkboxes above Select All in the Sacrifice tab.
@@ -476,8 +585,9 @@ namespace EpicLootStorageMaterials
             }
         }
 
-        // Chest unidentified items are offered while Epic Loot builds the Identify list and while it identifies (it checks
-        // that every selected item is still there, then takes it with RemoveExactItem below).
+        // Chest unidentified items are offered while Epic Loot builds the Identify list and while it identifies (0.15:
+        // LootRollSelectedItems checks every selected item is still there and takes it; 0.16: SacrificeUI.IdentifyItems
+        // pays for them through PayThen, see PatchPayment).
         private static bool _identifying;
 
         private static void PatchIdentify(Harmony harmony)
@@ -492,7 +602,8 @@ namespace EpicLootStorageMaterials
                     finalizer: new HarmonyMethod(typeof(Plugin), nameof(IdentifyEnd)));
                 found++;
             }
-            if (found < 2) _log?.LogWarning("Epic Loot's identify methods were not found: the Identify list shows no chest items.");
+            if (found == 0 || (found < 2 && AccessTools.Method(typeof(EpicLoot_UnityLib.SacrificeUI), "IdentifyItems") == null))
+                _log?.LogWarning("Epic Loot's identify methods were not found: the Identify list shows no chest items.");
         }
 
         private static void IdentifyStart() => _identifying = true;
@@ -506,9 +617,9 @@ namespace EpicLootStorageMaterials
         private static List<ItemDrop.ItemData> ChestItems()
         {
             var result = new List<ItemDrop.ItemData>();
-            var shardstones = _shardstones.Value && _buildingSacrificeList;
-            var gear = _gear.Value && _buildingSacrificeList;
-            var unidentified = _unidentified.Value && _identifying;
+            var shardstones = _shardstones.Value && (_buildingSacrificeList || _takingSacrifice);
+            var gear = _gear.Value && (_buildingSacrificeList || _takingSacrifice);
+            var unidentified = _unidentified.Value && (_identifying || _identifyPaying);
             if (!_trophies.Value && !shardstones && !gear && !unidentified) return result;
             foreach (var chest in UsableChests())
                 foreach (var item in chest.GetInventory().GetAllItems())

@@ -6,6 +6,7 @@
 // already in the item's sockets; both are skipped for a shard too.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
@@ -48,9 +49,11 @@ namespace ShardExclusivity
             _resolve = manager == null ? null : AccessTools.Method(manager, "ResolveSocketedEffect");
             _exclusive = requirements == null ? null : AccessTools.Field(requirements, "ExclusiveEffectTypes");
             _runeColor = shardType == null ? null : Enum.Parse(shardType, "None");
-            var check = requirements == null ? null : AccessTools.Method(requirements, "CheckRequirements",
-                new[] { typeof(ItemDrop.ItemData), AccessTools.TypeByName("EpicLoot.MagicItem"), AccessTools.TypeByName("EpicLoot.RequirementFailure").MakeByRefType(),
-                        typeof(string).MakeByRefType(), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
+            // The CheckRequirements that reports why (an "out RequirementFailure"): found by that, not by its whole parameter
+            // list (Epic Loot 0.16 added the socketed effects at the end, and the old exact lookup switched this sub-mod off).
+            var failure = AccessTools.TypeByName("EpicLoot.RequirementFailure")?.MakeByRefType();
+            var check = requirements == null || failure == null ? null : AccessTools.GetDeclaredMethods(requirements)
+                .FirstOrDefault(m => m.Name == "CheckRequirements" && m.GetParameters().Any(p => p.ParameterType == failure));
 
             if (_resolve == null || _exclusive == null || _runeColor == null || check == null)
             {

@@ -104,6 +104,7 @@ namespace RecipeSort
             foreach (var entry in new[] { ByKind, ByType, ByBiome, NewestFirst, CraftableFirst, ShowSearch, TypeToSearch, SearchIngredients, Headings })
                 if (entry != null) entry.SettingChanged -= Changed;
             ClearHeadings();
+            Sorted.Clear();
             if (KindOrder != null) KindOrder.SettingChanged -= Changed;
             RemoveBox();
             _words = new string[0];
@@ -114,6 +115,7 @@ namespace RecipeSort
         private static void Changed(object sender, EventArgs e)
         {
             SearchText.Clear();
+            Sorted.Clear();
             if (_box != null) _box.gameObject.SetActive(ShowSearch.Value);
             if (!ShowSearch.Value) SetQuery("");
             PlaceList();
@@ -149,17 +151,44 @@ namespace RecipeSort
             }
         }
 
+        // The rows as this left them, and the search they were filtered by: Inventory and QoL's Lighter Inventory keeps an
+        // unchanged list (the game does not make it anew), and then there is nothing to sort, filter or head again
+        // (sorting 449 rows of a free-building character again took 13-17 ms per opening, 2026-11-27).
+        private static readonly List<GameObject> Sorted = new List<GameObject>();
+        private static string _sortedFor;
+
         [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.UpdateRecipeList))]
         [HarmonyPostfix]
         [HarmonyPriority(Priority.Last)]
         private static void SortList(InventoryGui __instance)
         {
             var list = __instance.m_availableRecipes;
+            var words = string.Join(" ", _words);
+            if (AsLeft(list, words)) return;
+            Sort(__instance, list);
+            Sorted.Clear();
+            foreach (var pair in list) Sorted.Add(pair.InterfaceElement);
+            _sortedFor = words;
+        }
+
+        private static bool AsLeft(List<InventoryGui.RecipeDataPair> list, string words)
+        {
+            if (Sorted.Count == 0 || list.Count != Sorted.Count || words != _sortedFor) return false;
+            for (var i = 0; i < list.Count; i++)
+                if (list[i].InterfaceElement == null || list[i].InterfaceElement != Sorted[i]) return false;
+            return true;
+        }
+
+        private static void Sort(InventoryGui __instance, List<InventoryGui.RecipeDataPair> list)
+        {
             var changed = ClearHeadings();
             if (_words.Length > 0)
                 for (var i = list.Count - 1; i >= 0; i--)
                 {
                     if (Matches(list[i].Recipe)) continue;
+                    // Off before it goes: destroyed only at the end of the frame, it was switched on and drawn with the
+                    // window until then.
+                    if (list[i].InterfaceElement != null) list[i].InterfaceElement.SetActive(false);
                     Destroy(list[i].InterfaceElement);
                     list.RemoveAt(i);
                     changed = true;
@@ -226,13 +255,16 @@ namespace RecipeSort
 
             var colour = new Color(1f, 0.78f, 0.38f);
             var template = row.Find("name") != null ? row.Find("name").GetComponent<TMP_Text>() : row.GetComponentInChildren<TMP_Text>();
-            var label = new GameObject("text", typeof(RectTransform), typeof(TextMeshProUGUI));
+            // Made switched off and given its font before it wakes: a text waking without a font loads a default font the
+            // game does not have and logs a warning (11 per opening, one per heading).
+            var label = new GameObject("text", typeof(RectTransform));
+            label.SetActive(false);
             var labelRect = (RectTransform)label.transform;
             labelRect.SetParent(rect, false);
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
-            var text = label.GetComponent<TextMeshProUGUI>();
+            var text = label.AddComponent<TextMeshProUGUI>();
             if (template != null) text.font = template.font;
             text.fontSize = 16f;
             text.color = colour;
@@ -240,6 +272,7 @@ namespace RecipeSort
             text.enableWordWrapping = false;
             text.raycastTarget = false;
             text.text = name;
+            label.SetActive(true);
 
             var width = row.rect.width > 0f ? row.rect.width : 300f;
             var half = text.GetPreferredValues(name).x / 2f + 8f;
@@ -263,7 +296,11 @@ namespace RecipeSort
         {
             if (HeadingRows.Count == 0) return false;
             foreach (var heading in HeadingRows)
-                if (heading != null) Destroy(heading);
+            {
+                if (heading == null) continue;
+                heading.SetActive(false);
+                Destroy(heading);
+            }
             HeadingRows.Clear();
             return true;
         }

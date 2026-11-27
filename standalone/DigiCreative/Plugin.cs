@@ -50,12 +50,12 @@ namespace DigiCreative
     {
         public const string Guid = "digi.valheim.creativeworld";
         public const string Name = "Digi's Ultimate Builder";
-        public const string Version = "1.6.10";
+        public const string Version = "1.6.11";
 
         private static ConfigEntry<string> _worlds;
         private static ConfigEntry<float> _radius, _edge, _height, _centerX, _centerZ;
         private static ConfigEntry<bool> _fly, _god, _noCost, _tools, _hammer, _noEnemies, _noAnimals, _noTrees, _noGrass, _onlyTemple;
-        private static ConfigEntry<bool> _alwaysDay, _noRain, _noFog, _stamina, _noDrops, _through, _noDebris, _freeFuel;
+        private static ConfigEntry<bool> _alwaysDay, _noFog, _stamina, _noDrops, _through, _noDebris, _freeFuel;
         private static ConfigEntry<bool> _stability, _stabilityValue, _stillStations, _noRaids, _buildStability;
         private static ConfigEntry<float> _buildDistance;
         private static bool _noclip;
@@ -140,7 +140,7 @@ namespace DigiCreative
                 "One hour later (also switches Always day on, so the time stays there).");
             _earlierKey = Config.Bind("4 - Weather", "Earlier key", new KeyboardShortcut(KeyCode.PageDown),
                 "One hour earlier (also switches Always day on).");
-            _noRain = Config.Bind("4 - Weather", "No rain", true, "Always clear weather: no rain, storms or snow.");
+            Weather.Bind(Config, "4 - Weather");
             _noFog = Config.Bind("4 - Weather", "No fog", true, "No fog at all, so you see to the horizon.");
             // Loaded while the game runs (ScriptEngine reads BepInEx\scripts from memory, so no file location; the dev
             // unloader has removed the startup copy's patches and main part): an own patch ID per load, so a reload never
@@ -505,9 +505,10 @@ namespace DigiCreative
                     env.m_debugTimeOfDay = false; // the clock runs again
                     _heldTime = false;
                 }
-                if (_noRain.Value)
+                var weather = Weather.Wanted(env);
+                if (weather != null)
                 {
-                    if (env.m_forceEnv != "Clear") env.SetForceEnvironment("Clear");
+                    if (env.m_forceEnv != weather) env.SetForceEnvironment(weather);
                     _heldWeather = true;
                 }
                 else if (_heldWeather)

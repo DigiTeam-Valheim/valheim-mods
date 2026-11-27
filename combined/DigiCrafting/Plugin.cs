@@ -18,7 +18,7 @@ namespace DigiCrafting
     {
         public const string Guid = "digi.valheim.crafting";
         public const string Name = "Digi's Crafting and Automation";
-        public const string Version = "1.0.33";
+        public const string Version = "1.0.34";
 
         protected override ModuleInfo[] Modules { get; } =
         {
