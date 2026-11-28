@@ -18,7 +18,7 @@ namespace DigiEpicLoot
     {
         public const string Guid = "digi.valheim.epiclootaddons";
         public const string Name = "Digi's Epic Loot Add-ons";
-        public const string Version = "1.0.35";
+        public const string Version = "1.0.36";
 
         protected override ModuleInfo[] Modules { get; } =
         {

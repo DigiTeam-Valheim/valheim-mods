@@ -3,7 +3,8 @@
 // Storage, up to the room its Storage level allows per item; the rest stays in the chests. The chests are the ones the
 // table already uses for its costs (the Range setting from you, built chests nobody has open that you may open). The
 // deposit is Epic Loot's own: one request to the table's owner, and anything it did not take comes back to you, as with
-// Deposit All. Light: runs only when the button is pressed.
+// Deposit All (TableSend: if the deposit fails, the items go back into their chests). Light: runs only when the button
+// is pressed.
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -23,7 +24,6 @@ namespace EpicLootStorageMaterials
 
         private static ConfigEntry<bool> _enabled;
         private static ManualLogSource _log;
-        private static MethodInfo _send, _refund;
         private static readonly FieldInfo StashField = AccessTools.Field(typeof(StashUI), "_stash");
 
         internal static void Bind(DigiCore.ModuleConfig config)
@@ -37,11 +37,9 @@ namespace EpicLootStorageMaterials
         internal static void Patch(Harmony harmony, ManualLogSource log)
         {
             _log = log;
-            _send = AccessTools.Method(typeof(EnchantingTableStash), "Send");
-            _refund = AccessTools.Method(typeof(EnchantingTableStash), "RefundUnapplied");
             var onEnable = AccessTools.Method(typeof(StashUI), "OnEnable");
             var refresh = AccessTools.Method(typeof(StashUI), nameof(StashUI.Refresh));
-            if (_send == null || _refund == null || onEnable == null || refresh == null || StashField == null)
+            if (!TableSend.Ready(log) || onEnable == null || refresh == null || StashField == null)
             {
                 log.LogInfo("Deposit from nearby chests is off: Epic Loot's table storage was not found.");
                 return;
@@ -113,6 +111,7 @@ namespace EpicLootStorageMaterials
                 }
                 if (ui.Audio != null && ui.MainActionSFX != null) ui.Audio.PlayOneShot(ui.MainActionSFX);
                 var deltas = new Dictionary<string, int>();
+                var taken = new List<TableSend.Taken>();
                 var moved = 0;
                 foreach (var chest in Plugin.ChestsNear(player))
                 {
@@ -126,7 +125,7 @@ namespace EpicLootStorageMaterials
                         var room = stash.GetRoom(prefab);
                         var amount = room == int.MaxValue ? item.m_stack : Mathf.Min(item.m_stack, room - pending);
                         if (amount <= 0) continue;
-                        inventory.RemoveItem(item, amount);
+                        TableSend.Take(inventory, item, amount, taken);
                         deltas[prefab] = pending + amount;
                         moved += amount;
                     }
@@ -136,8 +135,7 @@ namespace EpicLootStorageMaterials
                     player.Message(MessageHud.MessageType.Center, "$mod_epicloot_storage_nothingtodeposit");
                     return;
                 }
-                var requested = deltas;
-                _send.Invoke(stash, new object[] { deltas, (Action<Dictionary<string, int>>)(applied => _refund.Invoke(null, new object[] { requested, applied })) });
+                TableSend.Send(stash, deltas, taken, player); // gives everything back to the chests if it fails
                 player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$mod_epicloot_storage_deposited", moved.ToString()));
                 ui.Refresh();
             }

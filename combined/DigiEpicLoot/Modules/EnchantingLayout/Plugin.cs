@@ -340,7 +340,11 @@ namespace EnchantingLayout
             }
             if (own == null)
             {
-                var label = new GameObject(LabelName, typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
+                // Made switched off and woken once it has its font: awake without one, TextMeshPro looks for its default
+                // font and writes "LiberationSans SDF ... DigiTabName" to the log (a line per tab; docs/pitfalls.md).
+                var go = new GameObject(LabelName, typeof(RectTransform));
+                go.SetActive(false);
+                var label = go.AddComponent<TextMeshProUGUI>();
                 label.transform.SetParent(tab, false);
                 var font = theirs.FirstOrDefault(t => t.transform.parent == null || t.transform.parent.name != "Selected") ?? theirs.FirstOrDefault();
                 if (font != null)
@@ -360,6 +364,7 @@ namespace EnchantingLayout
                 rect.offsetMin = new Vector2(2f, 3f);
                 rect.offsetMax = new Vector2(-2f, -2f);
                 Labels.Add(label.gameObject);
+                go.SetActive(true);
                 own = label.transform;
             }
             own.GetComponent<TMP_Text>().text = name;

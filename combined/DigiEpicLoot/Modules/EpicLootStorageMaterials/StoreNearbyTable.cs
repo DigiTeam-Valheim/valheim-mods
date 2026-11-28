@@ -30,7 +30,7 @@ namespace EpicLootStorageMaterials
 
         private static ConfigEntry<bool> _enabled, _allKinds;
         private static ManualLogSource _log;
-        private static MethodInfo _send, _refund, _sendable;
+        private static MethodInfo _sendable;
 
         internal static void Bind(DigiCore.ModuleConfig config)
         {
@@ -49,9 +49,7 @@ namespace EpicLootStorageMaterials
             var storeNearby = AccessTools.TypeByName("StoreNearby.Plugin");
             var before = storeNearby != null ? AccessTools.Method(storeNearby, "BeforeStore", new[] { typeof(Player), typeof(List<Inventory>), typeof(float) }) : null;
             _sendable = storeNearby != null ? AccessTools.Method(storeNearby, "Sendable", new[] { typeof(ItemDrop.ItemData), typeof(Inventory) }) : null;
-            _send = AccessTools.Method(typeof(EnchantingTableStash), "Send");
-            _refund = AccessTools.Method(typeof(EnchantingTableStash), "RefundUnapplied");
-            if (before == null || _sendable == null || _send == null || _refund == null)
+            if (before == null || _sendable == null || !TableSend.Ready(log))
             {
                 log.LogInfo("Store Nearby into the enchanting table is off: Store Nearby (Inventory and QoL) or Epic Loot's table storage was not found.");
                 return;
@@ -94,11 +92,13 @@ namespace EpicLootStorageMaterials
             if (items.Count == 0) return;
 
             var total = 0;
+            var taken = new List<TableSend.Taken>();
             foreach (var table in tables)
             {
                 var stash = table.Stash;
                 var deltas = new Dictionary<string, int>();
                 var moved = 0;
+                taken.Clear();
                 foreach (var entry in items)
                 {
                     var item = entry.Item;
@@ -110,13 +110,12 @@ namespace EpicLootStorageMaterials
                     deltas.TryGetValue(prefab, out var pending);
                     var amount = Mathf.Min(item.m_stack, stash.GetRoom(prefab) - pending);
                     if (amount <= 0) continue;
-                    entry.From.RemoveItem(item, amount);
+                    TableSend.Take(entry.From, item, amount, taken);
                     deltas[prefab] = pending + amount;
                     moved += amount;
                 }
                 if (moved == 0) continue;
-                var requested = deltas;
-                _send.Invoke(stash, new object[] { deltas, (Action<Dictionary<string, int>>)(applied => _refund.Invoke(null, new object[] { requested, applied })) });
+                TableSend.Send(stash, deltas, taken, player); // gives everything back if it fails
                 total += moved;
             }
             if (total > 0 && Localization.instance != null)

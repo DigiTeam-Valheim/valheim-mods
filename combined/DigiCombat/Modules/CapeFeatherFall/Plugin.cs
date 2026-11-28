@@ -54,10 +54,16 @@ namespace CapeFeatherFall
             Refresh();
         }
 
+        private static bool _quitting;
+
+        private void OnApplicationQuit() => _quitting = true;
+
         private void OnDestroy()
         {
             Switches.Clear();
-            Refresh();
+            // Not while the game closes: the player's parts are already going, and Epic Loot 0.16's tracker patch on the
+            // same game method threw a NullReferenceException into the log on every quit.
+            if (!_quitting) Refresh();
         }
 
         // The game's own update of the worn equipment's effects, so a changed switch counts at once.
